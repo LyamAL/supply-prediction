@@ -1,11 +1,10 @@
 import datetime
 
-import numpy
 import pandas
 import matplotlib.pyplot as plt
 import seaborn as sns
 import util
-from tests.ceshi import draw
+from ceshi import draw
 from warehouse_type import merge
 
 
@@ -348,7 +347,10 @@ def filter_warehouse_site_():
         'F:\myStuff\数据\\20220926_new\仓_上海_1月_8月仓至站数据_20220926175202.csv',
         engine='python',
         skip_blank_lines=True)
-    site_df
+    df = pandas.merge(warehouse_df, site_df, on=['store_id_c', 'delv_center_num_c'],
+                      how='inner')
+    print()
+    pass
 
 
 if __name__ == '__main__':
