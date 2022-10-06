@@ -370,6 +370,9 @@ if __name__ == '__main__':
     # site_features()
     # warehouse_site_relations()
 
+    df = pandas.read_csv(
+        '/Users/lyam/同步空间/数据/营业站/site_features_covid.csv',
+        engine='python', skip_blank_lines=True)
     # available_warehouses_df = pandas.read_csv(
     #     '/Users/lyam/同步空间/数据/仓/ware_site_relations.csv',
     #     engine='python', index_col=[0, 1],

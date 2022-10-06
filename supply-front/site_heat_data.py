@@ -1,6 +1,7 @@
 import datetime
 
 import geopandas
+import pandas
 import pandas as pd
 from pandas_geojson import to_geojson, write_geojson
 
@@ -33,5 +34,22 @@ def covid_heatmap():
     write_geojson(geo_json, filename='siteHeat.json', indent=4)
 
 
+def site_info():
+    site_df = pd.read_csv('/Users/lyam/同步空间/数据/营业站/available_sites_with_fences_v2.csv', engine='python',
+                          skip_blank_lines=True)
+    gps_df = pd.read_csv('/Users/lyam/同步空间/数据/营业站/site_revised_gps_v2.csv', engine='python',
+                         skip_blank_lines=True)
+    site_df = site_df[['site_code', 'node_name']]
+    gps_df = gps_df[['site_code', 'lng', 'lat']]
+    site_gps_df = pandas.merge(site_df, gps_df, on='site_code', how='left')
+
+    site_gps_df.columns = ['id', 'name', 'lng', 'lat']
+    geo_json = to_geojson(df=site_gps_df, lat='lat', lon='lng',
+                          properties=['id', 'name'])
+    write_geojson(geo_json, filename='sitesList_v2.json', indent=4)
+    pass
+
+
 if __name__ == '__main__':
-    sites_polygon()
+    # sites_polygon()
+    site_info()
