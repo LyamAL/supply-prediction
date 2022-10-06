@@ -76,7 +76,7 @@ def toGeoFence(site_df, fence_attr):
 
 
 def site_relations():
-    # # 合并fence
+    # 合并fence
     # site_df = pandas.read_csv(
     #     '/Users/lyam/Documents/mystuff/idea/数据/营业站/available_sites.csv',
     #     engine='python',
@@ -86,6 +86,7 @@ def site_relations():
     #     engine='python',
     #     skip_blank_lines=True)
     # site_df_all = site_df_all[['site_code', 'fence', 'node_name']]
+    # site_df_all.drop_duplicates(inplace=True)
     # site_df = pandas.merge(site_df_all, site_df, left_on='site_code', right_on='site_id_c', how='right')
     # # site_df = site_df[['site_id_c', 'site_name_c', 'fence']]
     # df_nan = site_df[site_df[['fence']].isnull().T.any()]
@@ -93,11 +94,27 @@ def site_relations():
     # site_df.dropna(inplace=True)
     # site_df.drop_duplicates(inplace=True)
     # print(site_df.shape[0])
-    # site_df.to_csv('/Users/lyam/同步空间/数据/营业站/available_sites_with_fences.csv', index=False)  # 287个
+    # site_df = toGeoFence(site_df, 'fence')
+    # site_miyun_df = site_df[site_df['site_name_c'] == '上海密云营业部']
+    # polygons = list()
+    # indxs = list()
+    # for idx, row in site_miyun_df.iterrows():
+    #     indxs.append(idx)
+    #     polygons.append(row['fence'])
+    # site_df.at[indxs[0], 'fence'] = MultiPolygon(polygons)
+    # site_df.drop(index=indxs[1:], inplace=True)
+    #
+    # site_df.sort_values(by=['site_id_c'], ascending=True, inplace=True)
+    # length = site_df.shape[0]
+    # site_df.index = range(length)
+    # site_df.to_csv('/Users/lyam/同步空间/数据/营业站/available_sites_with_fences_v2.csv', index=False)
     # exit(0)
+    # site_df.to_csv('/Users/lyam/同步空间/数据/营业站/available_sites_with_fences.csv', index=False)  # 285个
+    # exit(0)
+
     # 构建表
     site_df = pandas.read_csv(
-        '/Users/lyam/同步空间/数据/营业站/available_sites_with_fences.csv',
+        '/Users/lyam/同步空间/数据/营业站/available_sites_with_fences_v2.csv',
         engine='python',
         skip_blank_lines=True)
     site_revised_gps_df = pandas.read_csv(
@@ -194,9 +211,16 @@ def site_features():
         '/Users/lyam/同步空间/数据/疫情场景数据/site_control_type_05250809.csv',
         engine='python',
         skip_blank_lines=True)
+    site_all_df = pandas.read_csv(
+        '/Users/lyam/同步空间/数据/营业站/available_sites_with_fences_v2.csv',
+        engine='python',
+        skip_blank_lines=True)
+    sites = list(site_all_df['site_code'])
+    site_early_df = site_early_df[site_early_df['site_code'].isin(sites)]
+    site_late_df = site_late_df[site_late_df['site_code'].isin(sites)]
     site_covid_df = pandas.concat([site_early_df, site_late_df])
     site_covid_df.to_csv('/Users/lyam/同步空间/数据/营业站/site_features_covid.csv', index=False)
-    pass
+    exit(0)
 
 
 def warehouse_site_relations():
@@ -215,7 +239,7 @@ def warehouse_site_relations():
         engine='python',
         skip_blank_lines=True)
     available_sites_df = pandas.read_csv(
-        '/Users/lyam/同步空间/数据/营业站/available_sites_with_fences.csv',
+        '/Users/lyam/同步空间/数据/营业站/available_sites_with_fences_v2.csv',
         engine='python',
         skip_blank_lines=True)
     warehouse_size = available_warehouses_df.shape[0]
@@ -272,32 +296,68 @@ def warehouse_site_relations():
     pass
 
 
+def reIndex(df):
+    length = df.shape[0]
+    df.index = range(length)
+    return df
+
+
 def sequence_data():
     # 仓
     available_warehouses_df = pandas.read_csv(
         '/Users/lyam/同步空间/数据/仓/available_warehouses_v2.csv',
         engine='python',
         skip_blank_lines=True)
-    available_warehouses_df = pandas.read_csv(
-        '/Users/lyam/同步空间/数据/仓/available_warehouses_v2.csv',
-        engine='python',
+    warehouse_out_df = pandas.read_csv(
+        '/Users/lyam/同步空间/数据/20220926_new/mergeCity后的_出仓量_仓库单量表.csv',
+        engine='python', parse_dates=['first_sorting_tm_c'],
         skip_blank_lines=True)
-    warehouse_seq_df = pandas.DataFrame(
-        columns=['store_id_c', 'delv_center_num_c', 'dt', 'qty'])
+    warehouse_out_df = pandas.merge(warehouse_out_df, available_warehouses_df, on=['store_id_c', 'delv_center_num_c'],
+                                    how='right')
+    warehouse_out_df.drop('delv_center_name_c', inplace=True, axis=1)
+    warehouse_out_df.drop('store_name_c', inplace=True, axis=1)
+    warehouse_out_df.columns = ['dt', 'store_id_c', 'delv_center_num_c', 'count']
+    warehouse_seq_df = pandas.DataFrame(columns=['dt', 'store_id_c', 'delv_center_num_c', 'count'])
+    dfg = warehouse_out_df.groupby(['dt', 'store_id_c', 'delv_center_num_c'])
+    for k, v in dfg:
+        if v.shape[0] <= 1:
+            warehouse_seq_df = pandas.concat([warehouse_seq_df, v])
+        else:
+            data = v.iloc[0]
+            data['count'] = v['count'].sum()
+            data = data.to_dict()
+            warehouse_seq_df = pandas.concat([warehouse_seq_df, pandas.DataFrame([data])])
 
+    warehouse_seq_df.sort_values(by=['dt', 'store_id_c', 'delv_center_num_c'], inplace=True, ascending=True)
+    warehouse_seq_df = reIndex(warehouse_seq_df)
+    warehouse_seq_df.to_csv('/Users/lyam/同步空间/数据/仓/warehouse_out_sequence.csv', index=False)
     # 站
     available_sites_df = pandas.read_csv(
-        '/Users/lyam/同步空间/数据/营业站/available_sites_with_fences.csv',
+        '/Users/lyam/同步空间/数据/营业站/available_sites_with_fences_v2.csv',
         engine='python',
         skip_blank_lines=True)
-    pass
-
-
-def neighborsCheck():
-    site_relations_df = pandas.read_csv(
-        '/Users/lyam/同步空间/数据/营业站/site_relations_01_matrix.csv',
-        engine='python',
+    sites_out_df = pandas.read_csv(
+        '/Users/lyam/同步空间/数据/20220926_new/上海_1_8月_仓_出站量_20220926175203.csv',
+        engine='python', parse_dates=['real_delv_tm_c'],
         skip_blank_lines=True)
+    available_sites_df = available_sites_df[['site_id_c']]
+    sites_out_df = pandas.merge(sites_out_df, available_sites_df, how='right', on='site_id_c')
+    sites_out_df.drop('site_name_c', inplace=True, axis=1)
+    sites_out_df.columns = ['dt', 'site_id_c', 'count']
+
+    sites_seq_df = pandas.DataFrame(columns=['dt', 'site_id_c', 'count'])
+    dfg = sites_out_df.groupby(['dt', 'site_id_c'])
+    for k, v in dfg:
+        if v.shape[0] <= 1:
+            sites_seq_df = pandas.concat([sites_seq_df, v])
+        else:
+            data = v.iloc[0]
+            data['count'] = v['count'].sum()
+            data = data.to_dict()
+            sites_seq_df = pandas.concat([sites_seq_df, pandas.DataFrame([data])])
+    sites_seq_df.sort_values(by=['dt', 'site_id_c'], inplace=True, ascending=True)
+    sites_seq_df = reIndex(sites_seq_df)
+    sites_seq_df.to_csv('/Users/lyam/同步空间/数据/仓/site_out_sequence.csv', index=False)
     pass
 
 
@@ -308,12 +368,10 @@ if __name__ == '__main__':
     # warehouse_relations()
     # site_relations()
     # site_features()
-    warehouse_site_relations()
+    # warehouse_site_relations()
 
     # available_warehouses_df = pandas.read_csv(
     #     '/Users/lyam/同步空间/数据/仓/ware_site_relations.csv',
     #     engine='python', index_col=[0, 1],
     #     skip_blank_lines=True)
-    # sequence_data()
-
-    neighborsCheck()
+    sequence_data()
