@@ -162,13 +162,13 @@ ls = ['FDC', '新通路', '综合']
 ls2 = ['商超', '小电', '药品', '百货', '3C', '健康', '服装', '图书', '生鲜', '冷链', '零售']
 
 
-def mergeByCity(df, df_qty, qty_has_center_id):
-    df = df[
+def mergeByCity(warehouse_df, df_qty, qty_has_center_id):
+    warehouse_df = warehouse_df[
         ['store_id_c', 'store_name_c', 'delv_center_num_c', 'delv_center_name_c', 'storetype', 'province', 'city']]
 
     # 同品类 -> 同delv center -> 合并
-    dfg = df.groupby(['storetype', 'delv_center_num_c'])
-    df_all = pandas.DataFrame(columns=df.columns)
+    dfg = warehouse_df.groupby(['storetype', 'delv_center_num_c'])
+    df_all = pandas.DataFrame(columns=warehouse_df.columns)
     for k, df_grouped in dfg:
         if df_grouped.shape[0] == 1:
             df_all = pandas.concat([df_all, df_grouped],
@@ -195,12 +195,8 @@ def mergeByCity(df, df_qty, qty_has_center_id):
 
                 changed_ids = df_qty_change.index
                 for changed_id in changed_ids:
-                    if qty_has_center_id:
-                        df_qty.at[changed_id, 'store_id_c'] = first_row_df['store_id_c']
-                        df_qty.at[changed_id, 'store_name_c'] = first_row_df['store_name_c']
-                    else:
-                        df_qty.at[changed_id, 'store_name_c'] = first_row_df['store_name_c']
-                        df_qty.at[changed_id, 'store_id_c'] = first_row_df['store_id_c']
+                    df_qty.at[changed_id, 'store_id_c'] = first_row_df['store_id_c']
+                    df_qty.at[changed_id, 'store_name_c'] = first_row_df['store_name_c']
 
                 df_grouped.at[idx, 'store_id_c'] = first_row_df['store_id_c']
                 df_grouped.at[idx, 'store_name_c'] = first_row_df['store_name_c']
@@ -208,7 +204,6 @@ def mergeByCity(df, df_qty, qty_has_center_id):
                                    ignore_index=False, sort=False)
 
     df_all.drop_duplicates(inplace=True)
-    print(df_all.shape[0])
     return df_all, df_qty
 
 
@@ -244,7 +239,7 @@ def levelize(df):
 
 def filter_warehouse_qty_(qty_path, dt_attr, tp):
     warehouse_df = pandas.read_csv(
-        'F:\myStuff\数据\仓_gps_营业部_polygon_\仓库地址坐标品类距离_v3.csv',
+        '/Users/lyam/同步空间/数据/仓_gps_营业部_polygon_/仓库地址坐标品类距离_v3.csv',
         engine='python',
         skip_blank_lines=True)
     warehouse_df = warehouse_df[
@@ -272,6 +267,9 @@ def filter_warehouse_qty_(qty_path, dt_attr, tp):
 
     # 按配送中心所在城市匹配
     warehouse_df, in_df = mergeByCity(warehouse_df, in_df, True)
+
+    in_df.to_csv('csvs/mergeCity后的_{t}_仓库单量表.csv'.format(t=tp), index=False)
+    exit(0)
     warehouse_df.drop_duplicates(inplace=True)
 
     warehouse_df = warehouse_df[warehouse_df['storetype'] != '其他']
@@ -369,61 +367,75 @@ def cal_distance():
 
 def filter_warehouse_site_():
     warehouse_df = pandas.read_csv(
-        'F:\myStuff\数据\仓_gps_营业部_polygon_\仓库地址坐标品类距离_v3.csv',
+        '/Users/lyam/同步空间/数据/仓_gps_营业部_polygon_/仓库地址坐标品类距离_v3.csv',
         engine='python',
         skip_blank_lines=True)
     warehouse_df.drop_duplicates(subset=['store_id_c', 'delv_center_num_c'], inplace=True)
     warehouse_df = warehouse_df[warehouse_df['storetype'] != '其他']
+    site_df = pandas.read_csv(
+        '/Users/lyam/同步空间/数据/20220926_new/仓_上海_1月_8月仓至站数据_20221004130333.csv',
+        engine='python', encoding='gbk',
+        skip_blank_lines=True)
     # site_df = pandas.read_csv(
-    #     'F:\myStuff\数据\\20220926_new\仓_上海_1月_8月仓至站数据_20220926175202.csv',
+    #     'site_df_t_0929.csv',
     #     engine='python',
     #     skip_blank_lines=True)
-    site_df = pandas.read_csv(
-        'site_df_t_0929.csv',
-        engine='python',
-        skip_blank_lines=True)
-    # site_df.dropna(subset=['sale_ord_count'], inplace=True)
-    site_df.sort_values(by=['store_id_c'], ascending=True, inplace=True)
-    # site_df.reset_index(drop=True, inplace=True)
-    # site_df = site_df[['store_id_c', 'store_name_c']]
-    # site_df.drop_duplicates(inplace=True)
+    # TODO 待数据更新修改！
+    # sale_ord_dt_c,store_id_c,store_name_c,delv_center_num_c,delv_center_name_c,site_id_c,site_name_c,sale_ord_count
+    site_df.dropna(subset=['sale_ord_count'], inplace=True)
+    site_df.drop_duplicates(inplace=True)
+    site_df.sort_values(by=['store_id_c', 'delv_center_num_c'], ascending=True, inplace=True)
+    site_df.reset_index(drop=True, inplace=True)
+    # site_df = site_df[['store_id_c', 'delv_center_num_c']]
     # site_df.to_csv('site_df_t_0929.csv', index=False)
     # exit(0)
-    print('before merge', warehouse_df.shape[0])
-    warehouse_df, site_df = mergeByCity(warehouse_df, site_df, False)
-    site_df.drop_duplicates(inplace=True)
-    print('after merge', warehouse_df.shape[0])
-    site_df = site_df['store_name_c']
-    df = pandas.merge(warehouse_df, site_df, on='store_name_c',
+    print('before merge', site_df.shape[0])
+    warehouse_df, site_df_ = mergeByCity(warehouse_df, site_df, True)
+    # site_df_.drop_duplicates(inplace=True)
+    site_df.to_csv('csvs/mergeCity后的仓至站.csv', index=False)
+    print('after merge', site_df_.shape[0])
+    exit(0)
+    # site_df = site_df['store_name_c']
+    df = pandas.merge(warehouse_df, site_df, on=['store_id_c', 'delv_center_num_c'],
                       how='inner')
     print(df.shape[0])
 
-    df.to_csv('csvs/ware-to-site_warehouse_unique_.csv', index=False)
+    df.to_csv('csvs/ware-to-site_warehouse_unique_v2.csv', index=False)
     pass
 
 
 if __name__ == '__main__':
     # extractProvince_City()
-    # filter_warehouse_qty_('F:\myStuff\数据\\20220926_new\上海_1_8月_仓_订单量_20220926212534.csv', 'sale_ord_dt_c', 'sale')
-    # filter_warehouse_qty_('F:\myStuff\数据\\20220926_new\上海_1_8月_仓_出仓量_20220926212042.csv', 'first_sorting_tm_c', 'out')
+    # filter_warehouse_qty_('/Users/lyam/同步空间/数据/20220926_new/上海_1_8月_仓_订单量_20220926212534.csv',
+    #                       'sale_ord_dt_c', '订单量')
+    # filter_warehouse_qty_('/Users/lyam/同步空间/数据/20220926_new/上海_1_8月_仓_出仓量_20220926212042.csv',
+    #                       'first_sorting_tm_c', '出仓量')
+    print('3')
     # # cal_distance()
     #
-    # filter_warehouse_site_()
+    filter_warehouse_site_()
     df1 = pandas.read_csv(
-        'csvs/ware-to-site_warehouse_unique_.csv',
+        'csvs/ware-to-site_warehouse_unique_v2.csv',
         engine='python',
         skip_blank_lines=True)
+    df1 = df1[['delv_center_num_c', 'store_id_c']]
+    df1.drop_duplicates(inplace=True)
+
     df2 = pandas.read_csv(
         'csvs/out_warehouse_unique_.csv',
         engine='python',
         skip_blank_lines=True)
+    df2 = df2[['delv_center_num_c', 'store_id_c']]
+    df2.drop_duplicates(inplace=True)
+
     df3 = pandas.read_csv(
         'csvs/sale_warehouse_unique_.csv',
         engine='python',
         skip_blank_lines=True)
+    df3 = df3[['delv_center_num_c', 'store_id_c']]
+    df3.drop_duplicates(inplace=True)
+
     df = pandas.merge(df2, df3, on=['delv_center_num_c', 'store_id_c'], how='inner')
     df.drop_duplicates(inplace=True, subset=['delv_center_num_c', 'store_id_c'])
-    df = df[['delv_center_num_c', 'store_id_c', 'store_name_c_x']]
-    df1 = df1[['store_name_c']]
-    df_res = pandas.merge(df, df1, left_on=['store_name_c_x'], right_on=['store_name_c'], how='inner')
-    df_res.to_csv('F:\myStuff\数据\仓\\available_warehouses.csv', index=False)
+    df_res = pandas.merge(df, df1, on=['delv_center_num_c', 'store_id_c'], how='inner')
+    df_res.to_csv('/Users/lyam/同步空间/数据/仓/available_warehouses_v2.csv', index=False)

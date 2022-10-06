@@ -1,6 +1,8 @@
 import datetime
 import re
 import random
+import time
+
 import folium.plugins as plugins
 
 import pandas as pd
@@ -53,6 +55,35 @@ def getCovidColor(type):
     if type == '管控区':
         return control_type_color[1]
     return control_type_color[2]
+
+
+def plotDotWithDistinctColor(point):
+    folium.CircleMarker(location=[point.lat, point.lng],
+                        radius=2, fillOpacity=1, color=point.color,
+                        weight=4).add_to(map)
+
+
+def visualizze(site_df):
+    poly_color = [random_color() for _ in range(site_df.shape[0])]
+    site_df['color'] = poly_color
+    # 画polygon
+    for index, row in site_df.iterrows():
+        fillColor = row['color']
+        color = 'white'
+        polyg_ = folium.GeoJson(
+            row['fence'],
+            style_function=lambda x, fillColor=fillColor, color=color: {
+                "fillColor": fillColor,
+                "color": color,
+                'weight': 1,
+                'fillOpacity': 0.3},
+        )
+        polyg_.add_to(map)
+    # 画营业站
+    site_df.apply(plotDotWithDistinctColor, axis=1)
+
+    map.fit_bounds(map.get_bounds(), padding=(10, 10))
+    map.save('test' + str(int(time.time())) + '.html')
 
 
 if __name__ == '__main__':

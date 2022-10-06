@@ -1,46 +1,55 @@
-import math
-
-import geopandas
 import pandas
 import datetime
-import util
 
+from shapely import geometry
+
+import util
+from features_construction import toGeoFence
+
+
+def formatAddress(x):
+    if x['addr'][0:2] == '上海':
+        return x['addr'] + x['name']
+    if x['name'][0:2] == '上海':
+        return x['name'] + x['addr']
+    return x['city_name'] + x['area_name'] + x['addr']
 
 
 if __name__ == '__main__':
-    covid_df = pandas.read_csv('F:\myStuff\数据\疫情数据\最新上海疫情数据_20220921190302.csv', engine='python', skip_blank_lines=True,
-                               parse_dates=['date'])
-    site_df = pandas.read_csv('F:\myStuff\数据\仓_gps_营业部_polygon_\上海营业站位置信息with合并围栏.csv', engine='python',
+    # covid_df = pandas.read_csv('/Users/lyam/同步空间/数据/疫情数据/最新上海疫情数据_20220921190302.csv',
+    #                            engine='python', skip_blank_lines=True,
+    #                            parse_dates=['date'])
+    # covid_df['x'] = covid_df['x'].apply(lambda x: x / 1e7)
+    # covid_df['y'] = covid_df['y'].apply(lambda x: x / 1e7)
+    # # covid_df = covid_df[covid_df['epidemic_level'] != '未知']
+    # covid_gps_df = covid_df.drop_duplicates(subset=['x', 'y'])
+    # covid_gps_df = covid_gps_df[['name', 'addr', 'x', 'y', 'city_name', 'area_name']]
+    # covid_gps_df['address'] = covid_gps_df.apply(lambda x: formatAddress(x), axis=1)
+    # covid_gps_df[['lng', 'lat']] = covid_gps_df.apply(
+    #     lambda x: util.geocodeBDetailed(x['address']),
+    #     axis=1,
+    #     result_type='expand')
+    # covid_gps_df = covid_gps_df[['x', 'y', 'lng', 'lat']]
+    # covid_df = pandas.merge(covid_df, covid_gps_df, on=['x', 'y'], how='left')
+    #
+    # covid_df['date'] = covid_df['date'].apply(
+    #     lambda x: x.replace(hour=0, minute=0, second=0))
+    # covid_df = covid_df[['epidemic_level', 'area_name', 'date', 'lng', 'lat', 'addr']]
+    # covid_df.drop_duplicates(inplace=True)
+    # covid_df.sort_values(ascending=True, inplace=True, by=['date'])
+    # covid_df['id'] = range(len(covid_df))
+    # covid_df.index = covid_df['id']
+    # covid_df.to_csv('covid_0608.csv', index=False)
+    site_df = pandas.read_csv('/Users/lyam/同步空间/数据/营业站/site_revised_gps_v2.csv',
+                              engine='python',
                               skip_blank_lines=True)
-    site_df['fence'] = geopandas.GeoSeries.from_wkt(site_df['fence'])
-    site_df = geopandas.GeoDataFrame(site_df, geometry='fence')
-    site_df.set_crs(epsg="4326", inplace=True)
+    covid_df = pandas.read_csv('covid_0608.csv',
+                               engine='python',parse_dates=['date'],
+                               skip_blank_lines=True)
+    site_df = toGeoFence(site_df, 'fence')
     site_df.sort_values(ascending=True, inplace=True, by=['county_name'])
     site_df.index = site_df['site_code']
     districts = list(site_df['county_name'].unique())
-
-    covid_df['x'] = covid_df['x'].apply(lambda x: x / 1e7)
-    covid_df['y'] = covid_df['y'].apply(lambda x: x / 1e7)
-    covid_df = covid_df[covid_df['epidemic_level'] != '未知']
-    covid_gps_df = covid_df.drop_duplicates('addr')
-    covid_gps_df = covid_gps_df[['name', 'addr', 'x', 'y', 'city_name']]
-    covid_gps_df[['lng', 'lat']] = covid_gps_df.apply(
-        lambda x: util.geocodeBDetailed(x['city_name'], x['name'] + x['addr']),
-        axis=1,
-        result_type='expand')
-    # covid_df[['lng', 'lat']] = covid_df.apply(lambda x: bd09_to_wgs84(x['x'], x['y']), axis=1, result_type='expand')
-    covid_gps_df[['lng', 'lat']] = covid_gps_df.apply(lambda x: util.gcj02_to_wgs84(x['lng'], x['lat']), axis=1,
-                                                      result_type='expand')
-    covid_gps_df = covid_gps_df[['addr', 'lng', 'lat']]
-    covid_df = pandas.merge(covid_df, covid_gps_df, on='addr', how='left')
-    covid_df['date'] = covid_df['date'].apply(
-        lambda x: x.replace(hour=0, minute=0, second=0))
-    covid_df.drop_duplicates(inplace=True)
-    covid_df['id'] = range(len(covid_df))
-    covid_df.index = covid_df['id']
-    covid_df = covid_df[['id', 'epidemic_level', 'area_name', 'date', 'lng', 'lat', 'addr']]
-
-    covid_df.sort_values(ascending=True, inplace=True, by=['date'])
 
     start_date = datetime.datetime(2022, 5, 25, hour=0, minute=0, second=0)
     end_date = datetime.datetime(2022, 8, 9, hour=23, minute=0, second=0)
@@ -59,21 +68,15 @@ if __name__ == '__main__':
             site_df_county = site_df[site_df['county_name'] == county]
             site_df_county.index = site_df_county['site_code']
             for index, row in site_df_county.iterrows():
-                polygon = row['fence']
                 isEmpty = True
                 for i, r in covid_df_i_county.iterrows():
-                    testx = r['lng']
-                    testy = r['lat']
-                    if util.pnpoly(testx, testy, polygon):
+                    if util.pnpolyShaple(row['fence'], geometry.Point(r['lng'], r['lat'])):
                         # 点在多边形内
                         if isEmpty:
-                            site_df.at[index, md] = str(r['id']) + '-' + r[
-                                'epidemic_level'] + ";"
+                            site_df.at[index, md] = str(r['id']) + '-' + r['epidemic_level'] + ";"
                             isEmpty = False
                         else:
-                            site_df.at[index, md] += str(r['id']) + '-' + r[
-                                'epidemic_level'] + ";"
-
+                            site_df.at[index, md] += str(r['id']) + '-' + r['epidemic_level'] + ";"
 
     site_covid_df = pandas.DataFrame(
         columns=['site_code', 'node_name', 'dt', 'lockdown_count', 'safe_count', 'restraint_count'])
@@ -83,7 +86,7 @@ if __name__ == '__main__':
         md = cur_date.strftime("%m-%d")
         cur_date += datetime.timedelta(days=1)
         site_df_daily = site_df[
-            ['site_code', 'node_name', 'county_id', 'county_name', 'lng',
+            ['site_code', 'node_name', 'county_name', 'lng',
              'lat', 'fence',
              md]]
         site_df_daily[['lockdown_count', 'restraint_count', 'safe_count']] = site_df_daily.apply(
@@ -96,5 +99,5 @@ if __name__ == '__main__':
                     }
             site_covid_df = pandas.concat([site_covid_df, pandas.DataFrame.from_records([data])])
 
-    site_covid_df.to_csv('F:\myStuff\数据\疫情场景数据\site_control_type_05250809.csv', index=False)
+    site_covid_df.to_csv('/Users/lyam/同步空间/数据/疫情场景数据/site_control_type_05250809.csv', index=False)
     exit(0)

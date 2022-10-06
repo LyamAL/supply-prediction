@@ -4,6 +4,7 @@ import re
 import time
 import random
 
+from shapely.geometry import MultiPolygon
 import geopy.distance
 import pandas
 from shapely.affinity import affine_transform
@@ -164,6 +165,12 @@ def pnpoly(testx, testy, polygon):
     return c
 
 
+def pnpolyShaple(polygon, point):
+    # polygon = shapely.wkt.loads('POLYGON ((51.0 3.0, 51.3 3.61, 51.3 3.0, 51.0 3.0))')#
+    # point = shapely.geometry.Point(x,y)#float to point
+    return polygon.contains(point)
+
+
 # 凸边形质心
 def centroid(vertexes):
     _x_list = [vertex[0] for vertex in vertexes]
@@ -177,7 +184,7 @@ def centroid(vertexes):
 def countLockDown(s):
     if pandas.isna(s):
         return 0, 0, 0
-    return len(re.findall('封', s)), len(re.findall('管', s)), len(re.findall('防', s))
+    return len(re.findall('封', s)), len(re.findall('管', s)), len(re.findall('[防未]', s))
 
 
 def random_points_in_polygon(polygon, k):
@@ -206,6 +213,11 @@ def centroidShapely(polygon):
     p1 = wkt.loads(str(polygon))
     point = wkt.loads(p1.centroid.wkt)
     return point.x, point.y
+
+
+def toMultiPolygonShapely(p):
+    MultiPolygon([wkt.loads(p)])
+    pass
 
 
 def distance(coords_1, coords_2):
