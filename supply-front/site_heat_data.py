@@ -50,6 +50,21 @@ def site_info():
     pass
 
 
+def warehouses_info():
+    warehouse_df = pd.read_csv('/Users/lyam/同步空间/数据/仓/available_warehouses_v2.csv', engine='python',
+                               skip_blank_lines=True)
+    warehouse_all = pd.read_csv('/Users/lyam/同步空间/数据/仓_gps_营业部_polygon_/仓库地址坐标品类距离_v3.csv', engine='python',
+                               skip_blank_lines=True)
+    warehouse_df = pandas.merge(warehouse_df, warehouse_all, on=['delv_center_num_c', 'store_id_c'], how='left')
+    warehouse_df['id'] = range(warehouse_df.shape[0])
+    warehouse_df = warehouse_df[['id', 'store_name_c', 'lat', 'lng', 'storetype']]
+    geo_json = to_geojson(df=warehouse_df, lat='lat', lon='lng',
+                          properties=['id', 'store_name_c', 'storetype'])
+    write_geojson(geo_json, filename='warehouses_info.json', indent=4)
+    pass
+
+
 if __name__ == '__main__':
     # sites_polygon()
-    site_info()
+    # site_info()
+    warehouses_info()

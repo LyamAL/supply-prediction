@@ -3,6 +3,7 @@ import re
 import pandas
 
 
+
 # 哈尔滨 石家庄 驻马店 中国澳门 乌鲁木齐 呼和浩特
 def getStrictType(x):
     # if 'FDC' in x:
