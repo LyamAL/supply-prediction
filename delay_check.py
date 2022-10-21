@@ -42,7 +42,7 @@ def toHours(seconds):
     hours = (seconds - (days * seconds_in_day)) // seconds_in_hour
     minutes = (seconds - (days * seconds_in_day) - (hours * seconds_in_hour)) // seconds_in_minute
     # print(days, hours, minutes)
-    return days + hours / 24
+    return days + hours / 24, days * 24 + hours
 
 
 def convertSeconds(x, attr1, attr2):
@@ -292,18 +292,18 @@ def testTimestamp(start_m, start_d, end_m, end_d):
     return int(dt1.timestamp()), int(dt2.timestamp())
 
 
-def remove_outliers(df):
+def remove_outliers(df, dt_col, dt_attr):
     from matplotlib.cbook import boxplot_stats
-    dfg = df.groupby('arrival_dt')
+    dfg = df.groupby(dt_attr)
     for k, df_daily in dfg:
-        fliers = boxplot_stats(df_daily['delay_days'], whis=5).pop(0)['fliers']
-        df_drop_daily = df_daily[df_daily['delay_days'].isin(fliers)]
+        fliers = boxplot_stats(df_daily[dt_col], whis=5).pop(0)['fliers']
+        df_drop_daily = df_daily[df_daily[dt_col].isin(fliers)]
         drop_index = df_drop_daily.index
         df.drop(drop_index, inplace=True, axis=0)
     return df
 
 
-def analyse(attr1, attr2, info):
+def analyse(attr1, attr2, info, considerDelvCenter):
     address_df = pandas.read_csv(
         '/Users/lyam/同步空间/数据/仓_gps_营业部_polygon_/仓库地址坐标品类距离_v3.csv', engine='python',
         skip_blank_lines=True)
@@ -324,12 +324,10 @@ def analyse(attr1, attr2, info):
     warehouse_df = pandas.merge(city_df, warehouse_df, on=['city'], how='right')
     warehouse_df['distance_level'] = warehouse_df.apply(lambda x: levelize(x), axis=1)
     ware_dfg = warehouse_df.groupby('distance_level')
-
     for k, df_dis in ware_dfg:
         df_dis_waybill = pandas.merge(df_dis, df, on=['store_id_c', 'delv_center_num_c'], how='left')
         df_dis_waybill['delay_seconds'] = df_dis_waybill.apply(
             lambda x: (x[attr2] - x[attr1]).total_seconds(), axis=1)
-
         df_dis_waybill = df_dis_waybill[df_dis_waybill['delay_seconds'] > 0]  # 去除负值
 
         df_dis_waybill['delay_days'] = df_dis_waybill.apply(
@@ -340,6 +338,12 @@ def analyse(attr1, attr2, info):
 
         # 删除异常值
         df_dis_waybill = remove_outliers(df_dis_waybill)
+        if (considerDelvCenter):
+            df_temp = df_dis_waybill.groupby(['departure_dt', 'delv_center_num_c'])['delay_days'].sum().unstack(
+                fill_value=0)
+            df_temp["avg_delay_days"] = df_temp.apply(lambda x: x.mean(), axis=1)
+            df_temp.reset_index(inplace=True, drop=False)
+            df_temp = df_temp[['departure_dt', 'avg_delay_days']]
 
         df_dis_waybill['avg_delay_days'] = (
             df_dis_waybill['delay_days'].groupby(df_dis_waybill['departure_dt']).transform('mean'))
@@ -364,6 +368,11 @@ def analyse(attr1, attr2, info):
                                           right_on=['arrival_dt'], how='left')
         df_dis_waybill_res = pandas.merge(df_dis_waybill_res, df_outflow, on=['departure_dt'], how='left')
 
+        if considerDelvCenter:
+            df_temp = pandas.merge(df_temp, df_inflow, left_on=['departure_dt'],
+                                   right_on=['arrival_dt'], how='left')
+            df_temp = pandas.merge(df_temp, df_outflow, on=['departure_dt'], how='left')
+
         df_dis_waybill_res.fillna(0, inplace=True)
         df_dis_waybill_res.drop_duplicates(inplace=True)
         df_dis_waybill_res.sort_values(by='departure_dt', inplace=True)
@@ -372,16 +381,21 @@ def analyse(attr1, attr2, info):
         plt.rcParams["font.sans-serif"] = ["Arial Unicode MS"]  # 正常显示中文标签
         plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
         plt.figure(figsize=(12, 10))
-
-        ax = sns.barplot(data=df_dis_waybill_res, x="departure_dt", y="avg_delay_days")
+        if considerDelvCenter:
+            ax = sns.barplot(data=df_temp, x="departure_dt", y="avg_delay_days")
+        else:
+            ax = sns.barplot(data=df_dis_waybill_res, x="departure_dt", y="avg_delay_days")
         ax.xaxis.set_major_locator(MultipleLocator(7))
         ax.grid(True)  # 显示网格
         ax.set_xlabel(f'{info[3:5]}日期')
         ax.set_ylabel('延迟天数')
-        ax.set_title('{km}仓库运单-时效性分析({info})'.format(km=delevelize(k), info=info))
+        ax.set_title(f'{delevelize(k)}配送中心运单-时效性分析({info})')
 
         ax2 = ax.twinx()
-        sns.lineplot(data=df_dis_waybill_res, x='departure_dt', y='inflow', marker='o', color='red', ax=ax2)
+        if considerDelvCenter:
+            sns.lineplot(data=df_temp, x='departure_dt', y='inflow', marker='o', color='red', ax=ax2)
+        else:
+            sns.lineplot(data=df_dis_waybill_res, x='departure_dt', y='inflow', marker='o', color='red', ax=ax2)
         ax2.set_ylabel('当日{info}总量'.format(info=info[0:2]))
         ax2.legend(labels=['当日{info}总量'.format(info=info[0:2])])
 
@@ -390,36 +404,41 @@ def analyse(attr1, attr2, info):
         plt.gcf().subplots_adjust(left=margin, right=1. - margin)
         plt.gcf().set_size_inches(s1, plt.gcf().get_size_inches()[1])
 
-        plt.savefig('pngs/{info}/{km}_time_v2.png'.format(km=k, info=info))
+        plt.savefig(f'pngs/配送中心-入站/{k}_time.png')
         plt.show()
 
-        # 2 箱形图
-        df_dis_waybill.sort_values(by=['departure_dt'], inplace=True)
-        ax = sns.boxplot(data=df_dis_waybill, x="departure_dt", y="delay_days", orient="v", whis=4, fliersize=1)
-        ax.xaxis.set_major_locator(MultipleLocator(7))
-        ax.grid(True)
-        ax.set_xlabel(f'{info[3:5]}日期')
-        ax.set_ylabel('延迟天数')
-        ax.tick_params(axis='x', labelrotation=0)
-        ax.set_title('{km} 仓库运单-时效性 箱形图分析({info})'.format(km=delevelize(k), info=info))
-        s2 = 200 / plt.gcf().dpi * 10 + 2 * 0.2
-        margin2 = 0.5 / plt.gcf().get_size_inches()[1]
-        plt.gcf().subplots_adjust(left=margin, right=1. - margin, bottom=margin2, top=1. - margin2)
-        plt.gcf().set_size_inches(s1, s2)
-        plt.savefig('pngs/{info}/{km}_delay_box_v2.png'.format(km=k, info=info))
-        plt.show()
+        # # 2 箱形图
+        # df_dis_waybill.sort_values(by=['departure_dt'], inplace=True)
+        # ax = sns.boxplot(data=df_dis_waybill, x="departure_dt", y="delay_days", orient="v", whis=4, fliersize=1)
+        # ax.xaxis.set_major_locator(MultipleLocator(7))
+        # ax.grid(True)
+        # ax.set_xlabel(f'{info[3:5]}日期')
+        # ax.set_ylabel('延迟天数')
+        # ax.tick_params(axis='x', labelrotation=0)
+        # ax.set_title('{km} 仓库运单-时效性 箱形图分析({info})'.format(km=delevelize(k), info=info))
+        # s2 = 200 / plt.gcf().dpi * 10 + 2 * 0.2
+        # margin2 = 0.5 / plt.gcf().get_size_inches()[1]
+        # plt.gcf().subplots_adjust(left=margin, right=1. - margin, bottom=margin2, top=1. - margin2)
+        # plt.gcf().set_size_inches(s1, s2)
+        # plt.savefig('pngs/{info}/{km}_delay_box_v2.png'.format(km=k, info=info))
+        # plt.show()
 
         # 3 单量比例
         df_dis_waybill_res_ = df_dis_waybill_res[
             ['departure_dt', 'inflow', 'outflow', 'stay']]
         df_dis_waybill_res_.columns = ['departure_dt', f'当日{info[0:2]}量', f'当日{info[3:5]}总量', '历史积压单量']
-        ax = df_dis_waybill_res_.set_index('departure_dt').plot(kind='bar', stacked=True)
+        if considerDelvCenter:
+            df_temp = df_temp[['departure_dt', 'inflow', 'outflow']]
+            df_temp.columns = ['departure_dt', f'当日{info[0:2]}量', f'当日{info[3:5]}总量']
+            ax = df_temp.set_index('departure_dt').plot(kind='bar', stacked=True)
+        else:
+            ax = df_dis_waybill_res_.set_index('departure_dt').plot(kind='bar', stacked=True)
         ax.xaxis.set_major_locator(MultipleLocator(7))
         ax.grid(True)
         ax.set_xlabel(f'{info[3:5]}日期')
         ax.set_ylabel('运单数')
         ax.tick_params(axis='x', labelrotation=0)
-        ax.set_title('{km} 仓库运单-单量处理情况分析({info})'.format(km=delevelize(k), info=info))
+        ax.set_title('{km} 配送中心运单-单量处理情况分析({info})'.format(km=delevelize(k), info=info))
 
         # ax2 = ax.twinx()
         # df_dis_waybill_res_ = df_dis_waybill_res[['arrival_dt', '']]
@@ -433,7 +452,7 @@ def analyse(attr1, attr2, info):
 
         plt.gcf().subplots_adjust(left=margin, right=1. - margin)
         plt.gcf().set_size_inches(s1, plt.gcf().get_size_inches()[1])
-        plt.savefig('pngs/{info}/{km}_unsent_v2.png'.format(km=k, info=info))
+        plt.savefig(f'pngs/配送中心-入站/{k}_unsent_delv.png')
         plt.show()
 
 
@@ -541,7 +560,8 @@ def stay_priority_check():
     df['stay'] = df.apply(lambda x: 1 if x['in_dt'] != x['delv_dt'] else 0, axis=1)  # day1没妥投
     df['isAfternoon'] = df.apply(lambda x: 1 if int(x['hour']) >= 12 else 0, axis=1)
 
-    df = df[df['stay'] == 1]  # 选延迟的
+    df_all = df
+    df = df[df['stay'] == 1]
     df['delay_days'] = df.apply(lambda x: toHours((x['real_delv_tm'] - x['end_node_insp_tm']).total_seconds()), axis=1)
     # 关注那些当天没送到的订单，检查延迟订单的送达时间，看上下午的比例
     df['sum_afternoon'] = (
@@ -562,7 +582,7 @@ def stay_priority_check():
     ax.xaxis.set_major_locator(MultipleLocator(3))
     ax.grid(True)  # 显示网格
     ax.set_xlabel('妥投日期')
-    ax.set_ylabel('当天未妥投单里【下午】入站的单量/当天未妥投总单量')
+    ax.set_ylabel('下午入站的单量比例')
     ax.set_title('当天未妥投单量')
     plt.savefig('pngs/入站-妥投/积压单量时间.png')
     plt.show()
@@ -570,10 +590,10 @@ def stay_priority_check():
 
 if __name__ == '__main__':
     # analyse('sale_ord_tm', 'first_sorting_tm', '入仓-出仓')
-    # analyse('first_sorting_tm', 'end_node_insp_tm', '出仓-入站')
+    analyse('first_sorting_tm', 'end_node_insp_tm', '出仓-入站', True)
     # out_delv_no_distance()
     # findWarehouse()
     # draw()
-
+    exit(0)
     stay_priority_check()
     exit(0)
