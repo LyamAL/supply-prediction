@@ -15,6 +15,15 @@ from shapely import wkt
 from shapely.geometry import mapping
 
 
+def plotDotforDataframe(point, map):
+    import folium
+    '''input: series that contains a numeric named latitude and a numeric named longitude
+    this function creates a CircleMarker and adds it to your this_map'''
+    folium.CircleMarker(location=[point.lat, point.lng],
+                        radius=1, fillOpacity=0.5,
+                        weight=4).add_to(map)
+
+
 def geocodeB(address):
     """
     @ address: 名称字符串

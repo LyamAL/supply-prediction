@@ -356,76 +356,143 @@ def TimingSidedAnalysis(ware_dfg, df):
     pass
 
 
-def draw():
+def drawSided():
     from matplotlib import pyplot as plt
-    import seaborn as sns
     for k in range(1, 5):
         df = pandas.read_csv(
             f'csvs/{k}df_timing_unsent.csv',
             engine='python', skip_blank_lines=True)
-        df.dropna(inplace=True)
+        df.fillna(0, inplace=True)
         plt.rcParams["font.sans-serif"] = ["Arial Unicode MS"]  # 正常显示中文标签
         plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
         df['dt'] = df.apply(lambda x: datetime.datetime.strptime(x['dt'], "%m-%d"), axis=1)
         df['dt'] = df['dt'].apply(lambda x: x.replace(year=2022))
-        df = df[['dt', 'avg_ware_center_days', 'avg_start_center_out_end_in_days', 'avg_site_delv_days']]
-        # df = df[['dt', 'avg_warehouse_days', 'avg_ware_center_days', 'avg_start_center_in_out_days',
-        #          'avg_start_center_out_end_in_days', 'avg_end_center_in_out_days', 'avg_site_delv_days']]
+
+        # 运输方面
+        # df = df[['dt', 'avg_ware_center_days', 'avg_start_center_out_end_in_days', 'avg_site_delv_days']]
+        # 仓库处理方面
+        # df = df[['dt', 'avg_warehouse_days', 'avg_start_center_in_out_days', 'avg_end_center_in_out_days']]
+        # 运力方面
+        # df = df[['dt', 'avg_start_center_vehicle_days', 'avg_end_center_vehicle_days']]
+        # 单量
+        df = df[['dt', 'sum_warehouse_unsent', 'sum_start_center_in_out_unsent', 'sum_end_center_in_out_unsent']]
         # 1,2,7,8常规场景
         df_covid = df[(df['dt'] < datetime.datetime(2022, 7, 1)) & (df['dt'] >= datetime.datetime(2022, 3, 1))]
         df_normal = df[(df['dt'] < datetime.datetime(2022, 3, 1)) | (df['dt'] >= datetime.datetime(2022, 7, 1))]
-        df_covid.sort_values(by='dt', inplace=True)
+        df_covid.sort_values(by='dt', inplace=True, ascending=True)
         df_covid['dt'] = df_covid['dt'].dt.strftime('%m-%d')
         df_normal['dt'] = df_normal['dt'].dt.strftime('%m-%d')
-        df_normal = df_normal[:-3]
+        l1 = df_covid.shape[0]
+        l2 = df_normal.shape[0]
+        if l1 < l2:
+            df_normal = df_normal[:l1 - l2]
+        else:
+            df_covid = df_covid[l1 - l2:]
         df_normal['dt'] = list(df_covid['dt'])
-        df_normal = df_normal.melt(id_vars=['dt'], var_name='type', value_name='avg_days')
-        df_covid = df_covid.melt(id_vars=['dt'], var_name='type', value_name='avg_days')
+        # df_normal = df_normal.melt(id_vars=['dt'], var_name='type', value_name='avg_days')
+        # df_covid = df_covid.melt(id_vars=['dt'], var_name='type', value_name='avg_days')
 
-        fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(15.4, 12.8), sharey=True,
-                                       gridspec_kw={'wspace': 0, 'width_ratios': [1, 5]})
-        # color=['#F8C471', '#7DCEA0', '#85C1E9', '#BB8FCE', '#D98880'])
-        sns.barplot(data=df_covid, x='avg_days', y='dt', hue='type',
-                    ci=False, dodge=True, ax=ax2)
+        fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(12, 10), sharey=True,
+                                       gridspec_kw={'wspace': 0, 'width_ratios': [1, 2]})
+        df_covid.plot(x='dt', kind='barh', ax=ax2, color=['#52BE80', '#C39BD3', '#F7DC6F'], stacked=True)
         ax2.tick_params(labelright=False, right=False)
         ax2.set_ylabel('')
         ax2.set_xlabel('疫情场景')
-        plt.title('耗时天数分析')
+        ax2.tick_params(width=0, length=0)
+        # plt.title(f'{delevelize(k)} 订单耗时天数（均值）分析')
+        # plt.title(f'{delevelize(k)} 各阶段处理时间分析')
+        # plt.title(f'{delevelize(k)} 发货-封车分析')
+        plt.title(f'{delevelize(k)} 当天未处理单量分析')
         # draw juvenile subplot at the left
-        sns.barplot(data=df_normal, x='avg_days', y='dt', hue='type',
-                    ci=False, dodge=True, ax=ax1)
+        df_normal.plot(x='dt', kind='barh', ax=ax1, color=['#52BE80', '#C39BD3', '#F7DC6F'], stacked=True)
         l1, lb1 = ax1.get_legend_handles_labels()
         l2, lb2 = ax2.get_legend_handles_labels()
-        ax2.legend(l1 + l2, ['仓库-分拣中心', '始末分拣中心耗时', '末分拣中心-妥投'], loc='upper right')
-
-        ax1.set_xlim(0, 1)
-        ax1.set_xticks([0, 1])
+        # ax2.legend(l1 + l2, ['仓库-分拣中心', '始末分拣中心', '末分拣中心-妥投'], loc='upper right')
+        # ax2.legend(l1 + l2, ['仓库', '始分拣中心', '末分拣中心'], loc='upper right')
+        ax2.legend(l1 + l2, ['仓库', '始分拣中心', '末分拣中心'], loc='upper right')
+        xmax = max(ax1.get_xlim()[1], ax2.get_xlim()[1])
+        ax1.set_xlim(xmax=xmax)
+        ax2.set_xlim(xmax=xmax)
         ax1.set_ylabel('日期')
         ax1.yaxis.set_major_locator(MultipleLocator(7))
         ax1.set_xlabel('常规场景')
         ax1.tick_params(axis='y', labelleft=True, left=True)
         ax1.invert_xaxis()  # reverse the direction
         ax1.legend_.remove()  # remove the legend; the legend will be in ax1
-
-        plt.savefig(f'pngs/全阶段/timing_on_the_way_{k}.png')
+        plt.tight_layout()
+        # plt.savefig(f'pngs/全阶段/timing_dealing_{k}_v2.png')
+        # plt.savefig(f'pngs/全阶段/timing_vehicle_{k}_v2.png')
+        plt.savefig(f'pngs/全阶段/unsent_{k}_v2.png')
         plt.show()
-        exit(0)
-        ax = df_res.set_index('dt').plot(kind='bar', stacked=True,
-                                         color=['#D98880', '#7DCEA0', '#F19F6A', '#7EA1E1', '#6ECAD0', '#90909F'])
+
+
+def merge():
+    dt_ls = ['plan_delv_dt', 'start_opt_tm', 'plan_delv_tm', 'real_delv_tm', 'route_start_node_real_arv_tm',
+             'route_start_node_real_send_tm', 'start_sorting_real_insp_tm', 'start_sorting_real_send_tm',
+             'start_sorting_real_ship_tm', 'end_sorting_real_arv_tm', 'end_sorting_real_ship_tm',
+             'end_sorting_real_send_tm']
+    df = pandas.read_csv(
+        '/Users/lyam/同步空间/数据/全阶段/所有订单数据.csv',
+        parse_dates=dt_ls,
+        engine='python', skip_blank_lines=True)
+    df2 = pandas.read_csv(
+        '/Users/lyam/同步空间/数据/全阶段/03_xkw_供应_王桥_20221008202603.csv', encoding='gbk',
+        parse_dates=['end_node_insp_tm'],
+        engine='python', skip_blank_lines=True)
+    df2.dropna(inplace=True)
+    df2 = df2[['waybill_code_c', 'end_node_insp_tm']]
+    for i in dt_ls:
+        df.dropna(subset=[i], inplace=True)
+    print(df.shape[0])
+    df = pandas.merge(df, df2, left_on='waybill_code', right_on='waybill_code_c', how='inner')
+    df.to_csv('csvs/all_waybills_timing.csv', index=False)
+    print(df.shape[0])
+
+def draw():
+    from matplotlib import pyplot as plt
+    for k in range(1, 5):
+        df = pandas.read_csv(
+            f'csvs/{k}df_timing_unsent.csv',
+            engine='python', skip_blank_lines=True)
+        df.fillna(0, inplace=True)
+        df['dt'] = df.apply(lambda x: datetime.datetime.strptime(x['dt'], "%m-%d"), axis=1)
+        df['dt'] = df['dt'].apply(lambda x: x.replace(year=2022))
+        df['dt'] = df['dt'].dt.strftime('%m-%d')
+        df.sort_values(by='dt', inplace=True)
+        # 运输方面
+        # df = df[['dt', 'avg_ware_center_days', 'avg_start_center_out_end_in_days', 'avg_site_delv_days']]
+        # 仓库处理方面
+        # df = df[['dt', 'avg_warehouse_days', 'avg_start_center_in_out_days', 'avg_end_center_in_out_days']]
+        # 运力方面
+        # df = df[['dt', 'avg_start_center_vehicle_days', 'avg_end_center_vehicle_days']]
+        # 单量
+        df = df[['dt', 'sum_warehouse_unsent', 'sum_start_center_in_out_unsent', 'sum_end_center_in_out_unsent']]
+        plt.rcParams["font.sans-serif"] = ["Arial Unicode MS"]  # 正常显示中文标签
+        plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
+        plt.figure(figsize=(12, 10))
+
+        ax = df.set_index('dt').plot(kind='bar', stacked=True,
+                                     color=['#52BE80', '#C39BD3', '#F7DC6F'])
+        # color=['#D98880', '#7DCEA0', '#F19F6A', '#7EA1E1', '#6ECAD0', '#90909F'])
         ax.xaxis.set_major_locator(MultipleLocator(7))
         ax.grid(True)  # 显示网格
         ax.set_xlabel('日期')
-        ax.set_ylabel('天数')
-        ax.legend(labels=['入仓-出仓', '出仓-入始分拣中心', '始分拣中心的入和出', '出始分拣中心-入末分拣中心',
-                          '末分拣中心入和出', '末分拣中心-妥投'])
+        ax.set_ylabel('单量')
+
+        # ax.legend(labels=['仓库-始分拨中心', '始末分拣中心', '末分拣中心-妥投'])
+        # ax.legend(labels=['仓库', '始分拣中心', '末分拣中心'])
+        # ax.legend(labels=['始分拣中心', '末分拣中心'])
+        ax.legend(labels=['仓库', '始分拣中心', '末分拣中心'])
         ax.tick_params(axis='x', labelrotation=0)
-        ax.set_title('{km} 仓库各阶段耗时分析'.format(km=delevelize(k)))
+        ax.set_title('{km}订单各阶段单量分析'.format(km=delevelize(k)))
 
         s1 = 200 / plt.gcf().dpi * 10 + 2 * 0.2
         margin = 0.5 / plt.gcf().get_size_inches()[0]
         plt.gcf().subplots_adjust(left=margin, right=1. - margin)
         plt.gcf().set_size_inches(s1, plt.gcf().get_size_inches()[1])
-        plt.savefig('pngs/全阶段/{km}_timing.png'.format(km=k))
+        # plt.savefig('pngs/全阶段/horizontal/{km}_timing_transport_v2.png'.format(km=k))
+        # plt.savefig('pngs/全阶段/horizontal/{km}_timing_dealing_v2.png'.format(km=k))
+        plt.savefig('pngs/全阶段/horizontal/{km}_unsent_v2.png'.format(km=k))
         plt.show()
 
 
@@ -518,4 +585,5 @@ def analyse():
 
 
 if __name__ == '__main__':
-    draw()
+    merge()
+    # drawSided()
