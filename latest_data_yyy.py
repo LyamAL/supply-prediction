@@ -100,7 +100,7 @@ def Routing(df):
     df['route_dt'] = df['start_opt_tm'].dt.strftime('%m-%d')
     df.sort_values(by='route_dt', inplace=True)
     node_addr_df = pandas.read_csv(
-        '/Users/lyam/同步空间/数据/全阶段/分拣中心addr.csv', engine='python',
+        DISK_PATH_MACHINE+'数据/全阶段/分拣中心addr.csv', engine='python',
         skip_blank_lines=True)
     node_addr_df.drop(['Unnamed: 0', 'update_time', 'node_name'], inplace=True, axis=1)
 
@@ -496,7 +496,7 @@ def analyse():
              'start_sorting_real_ship_tm', 'end_sorting_real_arv_tm', 'end_sorting_real_ship_tm',
              'end_sorting_real_send_tm']
     df = pandas.read_csv(
-        '/Users/lyam/同步空间/数据/全阶段/所有订单数据.csv',
+        DISK_PATH_MACHINE+'数据/全阶段/所有订单数据.csv',
         parse_dates=dt_ls,
         engine='python', skip_blank_lines=True)
     # for i in dt_ls:
@@ -505,10 +505,10 @@ def analyse():
     # Routing(df)
 
     address_df = pandas.read_csv(
-        '/Users/lyam/同步空间/数据/仓_gps_营业部_polygon_/仓库地址坐标品类距离_v3.csv', engine='python',
+        DISK_PATH_MACHINE+'数据/仓_gps_营业部_polygon_/仓库地址坐标品类距离_v3.csv', engine='python',
         skip_blank_lines=True)
     city_df = pandas.read_csv(
-        '/Users/lyam/同步空间/数据/仓_gps_营业部_polygon_/城市到上海距离.csv', engine='python',
+        DISK_PATH_MACHINE+'数据/仓_gps_营业部_polygon_/城市到上海距离.csv', engine='python',
         skip_blank_lines=True)
     warehouse_df = df.drop_duplicates(subset=['start_node_name'])
     warehouse_df = warehouse_df[['start_node_name']]  # all warehouses in table
@@ -592,6 +592,18 @@ def route_distribution(df):
     pass
 
 
+DISK_PATH_MACHINE = '/Users/lyam/同步空间/'
+
+
+def changePath(flag):
+    global DISK_PATH_MACHINE
+    if flag == 1:
+        DISK_PATH_MACHINE = '/Users/lyam/同步空间/'
+    else:
+        DISK_PATH_MACHINE = 'F:/BaiduSyncdisk/'
+
+
 if __name__ == '__main__':
+    # changePath()
     analyse()
     # drawSided()
