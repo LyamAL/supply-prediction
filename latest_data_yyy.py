@@ -181,7 +181,7 @@ def TimingAnalysis(ware_dfg, df, info, attr1, attr2):
         df_dis_waybill[attr2] = df_dis_waybill[attr2].dt.strftime('%m-%d')
         df_dis_waybill.drop_duplicates(inplace=True)
         # 删除异常值
-        df_dis_waybill = remove_outliers(df_dis_waybill, attr2)
+        df_dis_waybill = remove_outliers(df_dis_waybill, 'delay_days', attr2)
 
         df_dis_waybill['avg_delay_days'] = (
             df_dis_waybill['delay_days'].groupby(df_dis_waybill[attr2]).transform('mean'))
@@ -221,10 +221,8 @@ def unsent(x, dt1, dt2):
 def cal_timing(df, attr, dt1, dt2):
     col1 = attr + '_seconds'
     col2 = attr + '_days'
-    col3 = attr + '_hours'
     col4 = attr + '_unsent'
     col5 = 'avg_' + attr + '_days'
-    col6 = 'avg_' + attr + '_hours'
     col7 = 'sum_' + attr + '_unsent'
     df.dropna(subset=[dt1], inplace=True)
     df.dropna(subset=[dt2], inplace=True)
@@ -233,20 +231,18 @@ def cal_timing(df, attr, dt1, dt2):
         lambda x: (x[dt2] - x[dt1]).total_seconds(), axis=1)
     df[col4] = df.apply(
         lambda x: unsent(x, dt1, dt2), axis=1)
-    df[[col2, col3]] = df.apply(
+    df[col2] = df.apply(
         lambda x: toHours(x[col1]), axis=1, result_type='expand')
 
     df['dt'] = df[dt2].dt.strftime('%m-%d')
     df.drop_duplicates(inplace=True)
-    df = remove_outliers(df, col3, 'dt')
+    df = remove_outliers(df, col2, 'dt')
 
     df[col5] = (
         df[col2].groupby(df['dt']).transform('mean'))
-    df[col6] = (
-        df[col3].groupby(df['dt']).transform('mean'))
     df[col7] = (
         df[col4].groupby(df['dt']).transform('sum'))
-    df = df[['dt', col5, col6, col7]]
+    df = df[['dt', col5, col7]]
     df.drop_duplicates(inplace=True)
     return col5, df
 
@@ -262,31 +258,34 @@ def TimingStackedAnalysis(ware_dfg, df):
     for k, df_dis in ware_dfg:
         print(k)
         df_dis_waybill = pandas.merge(df_dis, df, left_on='store_name_c', right_on=['start_node_name'], how='left')
-        col_warehouse, df_warehouse = cal_timing(df_dis_waybill, 'warehouse', 'route_start_node_real_arv_tm',
-                                                 'route_start_node_real_send_tm')
+        col_opt, df_warehouse_opt = cal_timing(df_dis_waybill, 'warehouse', 'start_opt_tm',
+                                               'route_start_node_real_arv_tm')
         col_ware_center, df_ware_center = cal_timing(df_dis_waybill, 'ware_center', 'route_start_node_real_send_tm',
                                                      'start_sorting_real_insp_tm')
-        col_start_center_in_out, df_start_center_in_out = cal_timing(df_dis_waybill, 'start_center_in_out',
-                                                                     'start_sorting_real_insp_tm',
-                                                                     'start_sorting_real_send_tm')
-        col_start_center_out_end_in, df_start_center_out_end_in = cal_timing(df_dis_waybill, 'start_center_out_end_in',
-                                                                             'start_sorting_real_send_tm',
-                                                                             'end_sorting_real_arv_tm')
-        col_end_center_in_out, df_end_center_in_out = cal_timing(df_dis_waybill, 'end_center_in_out',
-                                                                 'end_sorting_real_arv_tm',
-                                                                 'end_sorting_real_ship_tm')
-        col_site_delv, df_site_delv = cal_timing(df_dis_waybill, 'site_delv',
-                                                 'end_sorting_real_ship_tm',
-                                                 'real_delv_tm')
-        df_res = pandas.merge(df_warehouse, df_ware_center, on='dt', how='outer')
-        df_res = pandas.merge(df_res, df_start_center_in_out, on='dt', how='outer')
-        df_res = pandas.merge(df_res, df_start_center_out_end_in, on='dt', how='outer')
-        df_res = pandas.merge(df_res, df_end_center_in_out, on='dt', how='outer')
-        df_res = pandas.merge(df_res, df_site_delv, on='dt', how='outer')
+        # col_warehouse, df_warehouse = cal_timing(df_dis_waybill, 'warehouse', 'route_start_node_real_arv_tm',
+        #                                          'route_start_node_real_send_tm')
+        # col_ware_center, df_ware_center = cal_timing(df_dis_waybill, 'ware_center', 'route_start_node_real_send_tm',
+        #                                              'start_sorting_real_insp_tm')
+        # col_start_center_in_out, df_start_center_in_out = cal_timing(df_dis_waybill, 'start_center_in_out',
+        #                                                              'start_sorting_real_insp_tm',
+        #                                                              'start_sorting_real_send_tm')
+        # col_start_center_out_end_in, df_start_center_out_end_in = cal_timing(df_dis_waybill, 'start_center_out_end_in',
+        #                                                                      'start_sorting_real_send_tm',
+        #                                                                      'end_sorting_real_arv_tm')
+        # col_end_center_in_out, df_end_center_in_out = cal_timing(df_dis_waybill, 'end_center_in_out',
+        #                                                          'end_sorting_real_arv_tm',
+        #                                                          'end_sorting_real_ship_tm')
+        # col_site_delv, df_site_delv = cal_timing(df_dis_waybill, 'site_delv',
+        #                                          'end_sorting_real_ship_tm',
+        #                                          'real_delv_tm')
+        df_res = pandas.merge(df_warehouse_opt, df_ware_center, on='dt', how='outer')
+        # df_res = pandas.merge(df_res, df_start_center_in_out, on='dt', how='outer')
+        # df_res = pandas.merge(df_res, df_start_center_out_end_in, on='dt', how='outer')
+        # df_res = pandas.merge(df_res, df_end_center_in_out, on='dt', how='outer')
+        # df_res = pandas.merge(df_res, df_site_delv, on='dt', how='outer')
 
         # df_dis_waybill = df_dis_waybill[
-        #     ['dt', col_warehouse, col_ware_center, col_start_center_in_out, col_start_center_out_end_in,
-        #      col_end_center_in_out, col_site_delv]]
+        #     ['dt', col_opt, col_ware_center]]
         df_res.drop_duplicates(inplace=True)
         # df.drop('Unnamed: 0', inplace=True, axis=1)
         df_res.sort_values(by='dt', inplace=True)
@@ -301,8 +300,9 @@ def TimingStackedAnalysis(ware_dfg, df):
         ax.grid(True)  # 显示网格
         ax.set_xlabel('日期')
         ax.set_ylabel('天数')
-        ax.legend(labels=['入仓-出仓', '出仓-入始分拣中心', '始分拣中心的入和出', '出始分拣中心-入末分拣中心',
-                          '末分拣中心入和出', '末分拣中心-妥投'])
+        # ax.legend(labels=['入仓-出仓', '出仓-入始分拣中心', '始分拣中心的入和出', '出始分拣中心-入末分拣中心',
+        #                   '末分拣中心入和出', '末分拣中心-妥投'])
+        ax.legend(labels=['处理-接单', '接单-封车打包'])
         ax.tick_params(axis='x', labelrotation=0)
         ax.set_title('{km} 仓库各阶段耗时分析'.format(km=delevelize(k)))
 
@@ -310,7 +310,7 @@ def TimingStackedAnalysis(ware_dfg, df):
         margin = 0.5 / plt.gcf().get_size_inches()[0]
         plt.gcf().subplots_adjust(left=margin, right=1. - margin)
         plt.gcf().set_size_inches(s1, plt.gcf().get_size_inches()[1])
-        plt.savefig('pngs/全阶段/{km}_timing.png'.format(km=k))
+        plt.savefig('pngs/全阶段/仓库端/{km}_timing.png'.format(km=k))
         plt.show()
     pass
 
@@ -430,23 +430,17 @@ def merge():
     dt_ls = ['plan_delv_dt', 'start_opt_tm', 'plan_delv_tm', 'real_delv_tm', 'route_start_node_real_arv_tm',
              'route_start_node_real_send_tm', 'start_sorting_real_insp_tm', 'start_sorting_real_send_tm',
              'start_sorting_real_ship_tm', 'end_sorting_real_arv_tm', 'end_sorting_real_ship_tm',
-             'end_sorting_real_send_tm']
+             'end_sorting_real_send_tm', 'end_node_insp_tm']
     df = pandas.read_csv(
-        '/Users/lyam/同步空间/数据/全阶段/所有订单数据.csv',
+        'csvs/all_waybills_timing.csv',
         parse_dates=dt_ls,
         engine='python', skip_blank_lines=True)
-    df2 = pandas.read_csv(
-        '/Users/lyam/同步空间/数据/全阶段/03_xkw_供应_王桥_20221008202603.csv', encoding='gbk',
-        parse_dates=['end_node_insp_tm'],
-        engine='python', skip_blank_lines=True)
-    df2.dropna(inplace=True)
-    df2 = df2[['waybill_code_c', 'end_node_insp_tm']]
-    for i in dt_ls:
-        df.dropna(subset=[i], inplace=True)
     print(df.shape[0])
-    df = pandas.merge(df, df2, left_on='waybill_code', right_on='waybill_code_c', how='inner')
-    df.to_csv('csvs/all_waybills_timing.csv', index=False)
-    print(df.shape[0])
+
+
+def centerAnaysis():
+    pass
+
 
 def draw():
     from matplotlib import pyplot as plt
@@ -497,33 +491,6 @@ def draw():
 
 
 def analyse():
-    # df = pandas.read_csv(
-    #     'df_temp.csv', engine='python',
-    #     skip_blank_lines=True).fillna(0)
-    # # df_dis_waybill = df_dis_waybill[
-    # #     ['dt', col_warehouse, col_ware_center, col_start_center_in_out, col_start_center_out_end_in,
-    # #      col_end_center_in_out, col_site_delv]]
-    # df.drop_duplicates(inplace=True)
-    # df.drop('Unnamed: 0', inplace=True, axis=1)
-    # df.sort_values(by='dt', inplace=True)
-    # from matplotlib import pyplot as plt
-    # plt.rcParams["font.sans-serif"] = ["Arial Unicode MS"]  # 正常显示中文标签
-    # plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
-    # plt.figure(figsize=(12, 10))
-    #
-    # ax = df.set_index('dt').plot(kind='bar', stacked=True, color=['#D98880', '#7DCEA0', '#F19F6A', '#7EA1E1', '#6ECAD0', '#90909F'])
-    # ax.xaxis.set_major_locator(MultipleLocator(7))
-    # ax.grid(True)  # 显示网格
-    # ax.set_xlabel('日期')
-    # ax.set_ylabel('天数')
-    # ax.tick_params(axis='x', labelrotation=0)
-    #
-    # s1 = 200 / plt.gcf().dpi * 10 + 2 * 0.2
-    # margin = 0.5 / plt.gcf().get_size_inches()[0]
-    # plt.gcf().subplots_adjust(left=margin, right=1. - margin)
-    # plt.gcf().set_size_inches(s1, plt.gcf().get_size_inches()[1])
-    # plt.show()
-    # exit(0)
     dt_ls = ['plan_delv_dt', 'start_opt_tm', 'plan_delv_tm', 'real_delv_tm', 'route_start_node_real_arv_tm',
              'route_start_node_real_send_tm', 'start_sorting_real_insp_tm', 'start_sorting_real_send_tm',
              'start_sorting_real_ship_tm', 'end_sorting_real_arv_tm', 'end_sorting_real_ship_tm',
@@ -532,8 +499,9 @@ def analyse():
         '/Users/lyam/同步空间/数据/全阶段/所有订单数据.csv',
         parse_dates=dt_ls,
         engine='python', skip_blank_lines=True)
-    for i in dt_ls:
-        df.dropna(subset=[i], inplace=True)
+    # for i in dt_ls:
+    #     df.dropna(subset=[i], inplace=True)
+    route_distribution(df)
     # Routing(df)
 
     address_df = pandas.read_csv(
@@ -552,10 +520,10 @@ def analyse():
     ware_dfg = warehouse_df.groupby('distance_level')
     # OutOfTime(ware_dfg, df)
     # TimingAnalysis(ware_dfg, df, '入仓-出仓', 'route_start_node_real_arv_tm', 'route_start_node_real_send_tm')
-    # TimingStackedAnalysis(ware_dfg, df)
+    TimingStackedAnalysis(ware_dfg, df)
     # RoutingCount(ware_dfg, df)
 
-    TimingSidedAnalysis(ware_dfg, df)
+    # TimingSidedAnalysis(ware_dfg, df)
 
     # 已经保存的预处理
     # df.drop(['Unnamed: 0', 'waybill_type'], inplace=True, axis=1)
@@ -584,6 +552,46 @@ def analyse():
     # exit(0)
 
 
+def route_distribution(df):
+    df_res = pandas.DataFrame()
+    df.dropna(subset=['real_delv_tm'], inplace=True)
+    df.dropna(subset=['recommended_routing'], inplace=True)
+    df.dropna(subset=['start_opt_tm'], inplace=True)
+    df['start_opt_tm'] = df['start_opt_tm'].apply(
+        lambda x: x.replace(hour=0, minute=0, second=0))
+
+    df = df[df['real_delv_tm'] <= datetime.datetime(2022, 8, 15)]
+    df = df[df['real_delv_tm'] >= datetime.datetime(2022, 1, 1)]
+    df = df[df['start_opt_tm'] <= datetime.datetime(2022, 8, 15)]
+    df = df[df['start_opt_tm'] >= datetime.datetime(2022, 1, 1)]
+    df['dt'] = df['start_opt_tm'].dt.strftime('%m-%d')
+    df.sort_values(by='dt', inplace=True)
+    df = df[['waybill_code', 'recommended_routing', 'dt']]
+    for i, x in df.iterrows():
+        routes = x.recommended_routing.split('->')
+        data = {'dt': x['dt']}
+        k = 1
+        for idx, route in enumerate(routes):
+            if '接货仓' in route:
+                k = 1
+                continue
+            pairs = route.split('_')
+            if idx == 0:
+                k = 1
+                data['warehouse'] = pairs[2]
+            else:
+                col = 'Route' + str(k)
+                data[col] = pairs[2]
+                k += 1
+        df_res = df_res.append([data], ignore_index=False)
+    print(len(df_res['warehouse'].unique()))
+    centers = pandas.unique(df[['Route1', 'Route2', 'Route3', 'Route4', 'Route5', 'Route6']].values.ravel('K'))
+    print(len(centers))
+    df_res.to_csv('csvs/route_df.csv', index=False)
+    exit(0)
+    pass
+
+
 if __name__ == '__main__':
-    merge()
+    analyse()
     # drawSided()

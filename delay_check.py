@@ -42,7 +42,7 @@ def toHours(seconds):
     hours = (seconds - (days * seconds_in_day)) // seconds_in_hour
     minutes = (seconds - (days * seconds_in_day) - (hours * seconds_in_hour)) // seconds_in_minute
     # print(days, hours, minutes)
-    return days + hours / 24, days * 24 + hours
+    return days + hours / 24
 
 
 def convertSeconds(x, attr1, attr2):
