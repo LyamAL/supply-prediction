@@ -25,8 +25,7 @@ if __name__ == '__main__':
         ['id', 'city', 'control_type', 'county', 'town', 'subdivision', 'dt', 'lng', 'lat']]
     covid_df.sort_values(
         ascending=True, inplace=True, by=['dt'])
-
-    while cur_date <= end_date:  # 获得疫情数据
+    while cur_date <= end_date:
         md = cur_date.strftime("%m-%d")
         cur_date += datetime.timedelta(days=1)
         site_df_daily = site_df[
@@ -43,5 +42,6 @@ if __name__ == '__main__':
                     'safe_count': row['safe_count'],
                     }
             site_covid_df = pandas.concat([site_covid_df, pandas.DataFrame.from_records([data])])
+
 
     site_covid_df.to_csv('/Users/lyam/同步空间/数据/疫情场景数据/site_control_type_04160517.csv', index=False)

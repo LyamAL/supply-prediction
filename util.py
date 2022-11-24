@@ -180,6 +180,86 @@ def pnpolyShaple(polygon, point):
     return polygon.contains(point)
 
 
+from numpy import concatenate
+
+link = lambda a, b: concatenate((a, b[1:]))
+edge = lambda a, b: concatenate(([a], [b]))
+
+
+def qhull2D(sample):
+    import sys, threading
+    sys.setrecursionlimit(10 ** 7)  # max depth of recursion
+    threading.stack_size(2 ** 27)  # new thread will get stack of such size
+    from numpy import dot, repeat, argmax, take, argmin
+    def dome(sample, base):
+        h, t = base
+        dists = dot(sample - h, dot(((0, -1), (1, 0)), (t - h)))
+        outer = repeat(sample, dists > 0, 0)
+        if len(outer):
+            pivot = sample[argmax(dists)]
+            return link(dome(outer, edge(h, pivot)),
+                        dome(outer, edge(pivot, t)))
+        else:
+            return base
+
+    if len(sample) > 2:
+        axis = sample[:, 0]
+        base = take(sample, [argmin(axis), argmax(axis)], 0)
+        return link(dome(sample, base), dome(sample, base[::-1]))
+    else:
+        return sample
+
+
+def minBoundingRect(hull_points_2d):
+    from numpy import nanmin, dot, transpose, unique, zeros, array, nanmax
+    import sys
+    edges = zeros((len(hull_points_2d) - 1, 2))  # empty 2 column array
+    for i in range(len(edges)):
+        edge_x = hull_points_2d[i + 1, 0] - hull_points_2d[i, 0]
+        edge_y = hull_points_2d[i + 1, 1] - hull_points_2d[i, 1]
+        edges[i] = [edge_x, edge_y]
+    edge_angles = zeros((len(edges)))  # empty 1 column array
+    for i in range(len(edge_angles)):
+        edge_angles[i] = math.atan2(edges[i, 1], edges[i, 0])
+    for i in range(len(edge_angles)):
+        edge_angles[i] = abs(edge_angles[i] % (math.pi / 2))  # want strictly positive answers
+    edge_angles = unique(edge_angles)
+    min_bbox = (0, sys.maxsize, 0, 0, 0, 0, 0, 0)  # rot_angle, area, width, height, min_x, max_x, min_y, max_y
+    for i in range(len(edge_angles)):
+        R = array([[math.cos(edge_angles[i]), math.cos(edge_angles[i] - (math.pi / 2))],
+                   [math.cos(edge_angles[i] + (math.pi / 2)), math.cos(edge_angles[i])]])
+        rot_points = dot(R, transpose(hull_points_2d))  # 2x2 * 2xn
+        min_x = nanmin(rot_points[0], axis=0)
+        max_x = nanmax(rot_points[0], axis=0)
+        min_y = nanmin(rot_points[1], axis=0)
+        max_y = nanmax(rot_points[1], axis=0)
+        width = max_x - min_x
+        height = max_y - min_y
+        area = width * height
+        if (area < min_bbox[1]):
+            min_bbox = (edge_angles[i], area, width, height, min_x, max_x, min_y, max_y)
+    angle = min_bbox[0]
+    R = array([[math.cos(angle), math.cos(angle - (math.pi / 2))], [math.cos(angle + (math.pi / 2)), math.cos(angle)]])
+    proj_points = dot(R, transpose(hull_points_2d))  # 2x2 * 2xn
+    min_x = min_bbox[4]
+    max_x = min_bbox[5]
+    min_y = min_bbox[6]
+    max_y = min_bbox[7]
+    center_x = (min_x + max_x) / 2
+    center_y = (min_y + max_y) / 2
+    center_point = dot([center_x, center_y], R)
+    # Calculate corner points and project onto rotated frame
+    corner_points = zeros((4, 2))  # empty 2 column array
+    corner_points[0] = dot([max_x, min_y], R)
+    corner_points[1] = dot([min_x, min_y], R)
+    corner_points[2] = dot([min_x, max_y], R)
+    corner_points[3] = dot([max_x, max_y], R)
+
+    # rot_angle, area, width, height, center_point, corner_points
+    return (angle, min_bbox[1], min_bbox[2], min_bbox[3], center_point,
+            corner_points)
+
+
 # 凸边形质心
 def centroid(vertexes):
     _x_list = [vertex[0] for vertex in vertexes]
@@ -230,8 +310,18 @@ def toMultiPolygonShapely(p):
 
 
 def distance(coords_1, coords_2):
+    if isinstance(coords_2, Point):
+        coords_1 = coords_1.coords
+        coords_2 = coords_2.coords
     return geopy.distance.distance(coords_1, coords_2).km
 
 
-def distance(x1, y1, x2, y2):
-    return geopy.distance.distance((y1, x1), (y2, x2)).km
+#
+# def distance(x1, y1, x2, y2):
+#     return geopy.distance.distance((y1, x1), (y2, x2)).km
+
+def chunks(lst, n):
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
+

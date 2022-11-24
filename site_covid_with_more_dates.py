@@ -44,7 +44,7 @@ if __name__ == '__main__':
                               engine='python',
                               skip_blank_lines=True)
     covid_df = pandas.read_csv('covid_0608.csv',
-                               engine='python',parse_dates=['date'],
+                               engine='python', parse_dates=['date'],
                                skip_blank_lines=True)
     site_df = toGeoFence(site_df, 'fence')
     site_df.sort_values(ascending=True, inplace=True, by=['county_name'])

@@ -5,9 +5,11 @@ import geopandas
 import pandas
 from matplotlib.ticker import MultipleLocator
 
+import util
 from delay_check import toHours
 from features_construction import toGeoFence
 from site_covid_visual import random_color
+from site_covid_with_more_dates import formatAddress
 
 
 def yq1():
@@ -25,7 +27,7 @@ def yq1():
     #     skip_blank_lines=True)
 
     # df2 = pandas.read_excel(
-        # '/Users/lyam/Library/Containers/com.tencent.xinWeChat/Data/Library/Application Support/com.tencent.xinWeChat/2.0b4.0.9/25616cbae1ede48acaba0badcbc8039c/Message/MessageTemp/cfaba1663508ae208088ed908ede3fd3/File/sites.xlsx')
+    # '/Users/lyam/Library/Containers/com.tencent.xinWeChat/Data/Library/Application Support/com.tencent.xinWeChat/2.0b4.0.9/25616cbae1ede48acaba0badcbc8039c/Message/MessageTemp/cfaba1663508ae208088ed908ede3fd3/File/fomulated_files.xlsx')
     # ls = list(df2.columns)
     # site_early_df = site_early_df[~site_early_df['node_name'].isin(ls)]
     # site_late_df = site_late_df[~site_late_df['node_name'].isin(ls)]
@@ -45,7 +47,7 @@ def yq2():
     site_df = geopandas.GeoDataFrame(site_df, geometry='fence')
     site_df.set_crs(epsg="4326", inplace=True)
     df2 = pandas.read_excel(
-        '/Users/lyam/Library/Containers/com.tencent.xinWeChat/Data/Library/Application Support/com.tencent.xinWeChat/2.0b4.0.9/25616cbae1ede48acaba0badcbc8039c/Message/MessageTemp/cfaba1663508ae208088ed908ede3fd3/File/sites.xlsx')
+        '/Users/lyam/Library/Containers/com.tencent.xinWeChat/Data/Library/Application Support/com.tencent.xinWeChat/2.0b4.0.9/25616cbae1ede48acaba0badcbc8039c/Message/MessageTemp/cfaba1663508ae208088ed908ede3fd3/File/fomulated_files.xlsx')
     ls = list(df2.columns)
     site_df = site_df[site_df['node_name'].isin(ls)]
 
@@ -67,7 +69,7 @@ def yq2():
 
     map.fit_bounds(map.get_bounds(), padding=(10, 10))
 
-    map.save('xkw/sites.html')
+    map.save('xkw/fomulated_files.html')
 
 
 def yq3():
@@ -199,34 +201,6 @@ def yq5_plotDot(point):
 
 
 def yq5_draw():
-    # df = pandas.read_csv(
-    #     '../csvs/route_df.csv',
-    #     engine='python', skip_blank_lines=True)
-    # rts = ['Route1', 'Route2', 'Route3', 'Route4', 'Route5', 'Route6']
-    # df_ = pandas.DataFrame()
-    # for i, r in df.iterrows():
-    #     path = {}
-    #     flag = True
-    #     lastCol = None
-    #     for col in rts:
-    #         if pandas.notna(r[col]):
-    #             path['dt'] = r['dt']
-    #             if flag:
-    #                 path['route_a'] = r['warehouse']
-    #                 path['route_b'] = r[col]
-    #                 lastCol = col
-    #                 flag = False
-    #                 df_ = df_.append([path], ignore_index=True)
-    #             else:
-    #                 path['route_a'] = r[lastCol]
-    #                 path['route_b'] = r[col]
-    #                 lastCol = col
-    #                 df_ = df_.append([path], ignore_index=True)
-    #         else:
-    #             break
-    #     pass
-    # df_.drop_duplicates(inplace=True)
-    # df_.to_csv('../csvs/routes_a_b.csv', index=False)
     df_ = pandas.read_csv(
         '../csvs/route_df.csv', engine='python',
         skip_blank_lines=True)
@@ -280,5 +254,268 @@ def yq5(df):
     pass
 
 
+def yq6():
+    site_dddf = pandas.read_csv(
+        'covid_sites_left.csv', encoding='gbk',
+        engine='python',
+        skip_blank_lines=True)
+    ls = list(site_dddf['site_code'].unique())
+
+    site_df = pandas.read_csv(
+        '/Users/lyam/同步空间/数据/营业站/available_sites_with_fences_v2.csv',
+        engine='python',
+        skip_blank_lines=True)
+    site_revised_gps_df = pandas.read_csv(
+        '/Users/lyam/同步空间/数据/营业站/site_revised_gps_v2.csv',
+        engine='python',
+        skip_blank_lines=True)
+    site_df.drop_duplicates(subset=['fence'], inplace=True)
+    site_df.drop('fence', inplace=True, axis=1)
+    site_revised_gps_df = toGeoFence(site_revised_gps_df, 'fence')
+    site_df = pandas.merge(site_df, site_revised_gps_df, left_on='site_id_c', right_on='site_code', how='left')
+    site_df = site_df[['site_id_c', 'site_name_c', 'lng', 'lat', 'fence']]
+
+    site_df = site_df[site_df['site_id_c'].isin(ls)]
+    site_df.sort_values(by=['site_id_c'], ascending=True, inplace=True)
+    site_df.index = site_df['site_id_c']
+    site_df_b = site_df
+    site_distance_df_ = pandas.DataFrame(columns=site_df['site_id_c'], index=site_df['site_id_c'])
+
+    for idx, row in site_df.iterrows():
+        for i, r in site_df_b.iterrows():
+            if i == idx:
+                distance = 0
+            else:
+                distance = util.distance(r['lng'], r['lat'], row['lng'], row['lat'])
+            site_distance_df_.at[idx, i] = round(distance, 5)
+    site_distance_df_.to_csv('173_site_distances_matrix.csv', index=False)
+    pass
+
+
+def yq7(site_id, site_poly_all, list_content):
+    from shapely.geometry import Polygon, Point
+    site_poly = site_poly_all[site_poly_all['site_code'] == site_id]
+    site_poly = toGeoFence(site_poly, 'fence')
+
+    site_polygon = site_poly['fence'].iloc[0]
+    site_points = [[i[0], i[1]] for i in list(site_polygon.exterior.coords)]
+    from mini_bounding_rect.MinimumBoundingBox import MinimumBoundingBox
+    res = MinimumBoundingBox(15, 15, site_points)
+    grids_poly = []
+    for grid in res.grids:
+        grid_polygon = Polygon([[p[1], p[0]] for p in grid])
+        grids_poly.append(grid_polygon)
+    pass
+    grids_df = pandas.DataFrame({'grids_poly': grids_poly})
+    grids_df['value'] = 0
+
+    # 填value
+    for k, v in list_content.items():
+        for coords in v:
+            for idx, row in grids_df.iterrows():
+                p = Point(float(coords[0]), float(coords[1]))
+                if row['grids_poly'].contains(p):
+                    grids_df.at[idx, 'value'] = grids_df.at[idx, 'value'] + coords[2]
+                    break
+    grids_df.to_csv('grid_.csv', index=False)
+
+
+def yq8():
+    from shapely.geometry import Polygon
+
+    site_poly = pandas.read_csv(
+        '/Users/lyam/同步空间/数据/仓_gps_营业部_polygon_/上海营业站位置信息with合并围栏.csv',
+        engine='python',
+        skip_blank_lines=True)
+    site_poly = toGeoFence(site_poly, 'fence')
+    distance_df = pandas.DataFrame(index=range(site_poly.shape[0]))
+    distance_df['site_code'] = site_poly['site_code']
+    from mini_bounding_rect.MinimumBoundingBox import MinimumBoundingBox
+    for i, r in site_poly.iterrows():
+        site_points = [[i[0], i[1]] for i in list(r['fence'].exterior.coords)]
+        res = MinimumBoundingBox(15, 15, site_points)
+        grid_polygon_a = Polygon([[p[1], p[0]] for p in res.grids[0]])
+        grid_polygon_b = Polygon([[p[1], p[0]] for p in res.grids[1]])
+        distance_df.at[i, 'distance'] = util.distance(grid_polygon_a.centroid, grid_polygon_b.centroid)
+    distance_df.to_csv('distance.csv', index=False)
+
+
+def yq9(districts, covid_df):
+    from shapely.geometry import Point
+    grid_poly = pandas.read_csv(
+        'grid_.csv',
+        engine='python',
+        skip_blank_lines=True)
+    grid_poly['idx'] = list(range(grid_poly.shape[0]))
+    # covid_df = pandas.read_csv('/Users/lyam/同步空间/数据/疫情数据/covid_with_jd_gps.csv', engine='python',
+    #                            skip_blank_lines=True, encoding='utf-8',
+    #                            parse_dates=['dt'])
+    # covid_df = covid_df[['id', 'control_type', 'county', 'town', 'subdivision', 'dt', 'lng', 'lat']]
+    # covid_df.sort_values(ascending=True, inplace=True, by=['dt'])
+    grid_poly = toGeoFence(grid_poly, 'grids_poly')
+    start_date = datetime.datetime(2022, 4, 15, hour=0, minute=0, second=0)
+    end_date = datetime.datetime(2022, 5, 17, hour=23, minute=0, second=0)
+    cur_date = start_date
+    while cur_date <= end_date:
+        tomorrow = (cur_date + datetime.timedelta(days=1))
+        covid_df_i = covid_df[(covid_df['dt'] >= cur_date) & (covid_df['dt'] < tomorrow)]
+        covid_df_i.sort_values(ascending=True, inplace=True, by=['county'])
+        for county in districts:
+            covid_df_i_county = covid_df_i[covid_df_i['county'] == county]
+            print(cur_date, ' ', county, '有', covid_df_i_county.shape[0], '条疫情数据')
+            for index, row in grid_poly.iterrows():
+                isEmpty = True
+                for i, r in covid_df_i_county.iterrows():
+                    if util.pnpolyShaple(row['grids_poly'], Point(r['lng'], r['lat'])):
+                        if isEmpty:
+                            grid_poly.at[index, cur_date.strftime("%m-%d")] = str(r['id']) + '-' + r[
+                                'control_type'] + ";"
+                            isEmpty = False
+                        else:
+                            grid_poly.at[index, cur_date.strftime("%m-%d")] += str(r['id']) + '-' + r[
+                                'control_type'] + ";"
+        cur_date += datetime.timedelta(days=1)
+    grid_poly.to_csv('covid_width_.csv', index=False)
+
+
+def yq9_2():
+    start_date = datetime.datetime(2022, 4, 15, hour=0, minute=0, second=0)
+    end_date = datetime.datetime(2022, 5, 17, hour=23, minute=0, second=0)
+    cur_date = start_date
+    grid_poly = pandas.read_csv(
+        'covid_width_.csv',
+        engine='python',
+        skip_blank_lines=True)
+
+    grid_poly_df = pandas.DataFrame(
+        columns=['idx', 'dt', 'lockdown_count', 'safe_count', 'restraint_count', 'value'])
+    while cur_date <= end_date:
+        md = cur_date.strftime("%m-%d")
+        cur_date += datetime.timedelta(days=1)
+        try:
+            grid_poly_daily = grid_poly[['idx', md, 'value']]
+        except Exception:
+            continue
+        grid_poly_daily[['lockdown_count', 'restraint_count', 'safe_count']] = grid_poly_daily.apply(
+            lambda x: util.countLockDown(x[md]), axis=1,
+            result_type='expand')
+
+        for index, row in grid_poly_daily.iterrows():
+            data = {'idx': row['idx'], 'value': row['value'], 'dt': cur_date,
+                    'lockdown_count': row['lockdown_count'], 'restraint_count': row['restraint_count'],
+                    'safe_count': row['safe_count'],
+                    }
+            grid_poly_df = pandas.concat([grid_poly_df, pandas.DataFrame.from_records([data])])
+
+    grid_poly_df.to_csv('grid_covid_04160517.csv', index=False)
+
+
+def yq9_3(districts):
+    from shapely.geometry import Point
+
+    covid_df = pandas.read_csv('covid_0608.csv',
+                               engine='python', parse_dates=['date'],
+                               skip_blank_lines=True)
+    grid_df = pandas.read_csv('grid_.csv',
+                              engine='python',
+                              skip_blank_lines=True)
+
+    grid_df['idx'] = list(range(grid_df.shape[0]))
+    grid_df = toGeoFence(grid_df, 'grids_poly')
+
+    start_date = datetime.datetime(2022, 5, 25, hour=0, minute=0, second=0)
+    end_date = datetime.datetime(2022, 8, 9, hour=23, minute=0, second=0)
+    cur_date = start_date
+    while cur_date <= end_date:
+        md = cur_date.strftime("%m-%d")
+        grid_df[md] = None
+        tomorrow = (cur_date + datetime.timedelta(days=1))
+        covid_df_i = covid_df[(covid_df['date'] >= cur_date) & (covid_df['date'] < tomorrow)]
+        cur_date += datetime.timedelta(days=1)
+        covid_df_i.sort_values(ascending=True, inplace=True, by=['area_name'])
+        for county in districts:
+            covid_df_i_county = covid_df_i[covid_df_i['area_name'] == county]
+            if covid_df_i_county.shape[0] == 0:
+                continue
+            for index, row in grid_df.iterrows():
+                isEmpty = True
+                for i, r in covid_df_i_county.iterrows():
+                    if util.pnpolyShaple(row['grids_poly'], Point(r['lng'], r['lat'])):
+                        if isEmpty:
+                            grid_df.at[index, md] = str(r['id']) + '-' + r['epidemic_level'] + ";"
+                            isEmpty = False
+                        else:
+                            grid_df.at[index, md] += str(r['id']) + '-' + r['epidemic_level'] + ";"
+
+    grid_df_ = pandas.DataFrame(
+        columns=['dt', 'lockdown_count', 'safe_count', 'restraint_count', 'idx', 'value'])
+    cur_date = start_date
+
+    while cur_date <= end_date:
+        md = cur_date.strftime("%m-%d")
+        cur_date += datetime.timedelta(days=1)
+        grid_df_daily = grid_df[
+            ['idx', 'value', md]]
+        grid_df_daily[['lockdown_count', 'restraint_count', 'safe_count']] = grid_df_daily.apply(
+            lambda x: util.countLockDown(x[md]), axis=1,
+            result_type='expand')
+        for index, row in grid_df_daily.iterrows():
+            data = {'idx': row['idx'], 'value': row['value'], 'dt': cur_date,
+                    'lockdown_count': row['lockdown_count'], 'restraint_count': row['restraint_count'],
+                    'safe_count': row['safe_count'],
+                    }
+            grid_df_ = pandas.concat([grid_df_, pandas.DataFrame.from_records([data])])
+
+    grid_df_.to_csv('grid_covid_05250809.csv', index=False)
+
+
+def yq9_4(site_id):
+    site_early_df = pandas.read_csv(
+        'grid_covid_05250809.csv',
+        engine='python',
+        skip_blank_lines=True)
+    site_late_df = pandas.read_csv(
+        'grid_covid_04160517.csv',
+        engine='python',
+        skip_blank_lines=True)
+
+    site_covid_df = pandas.concat([site_early_df, site_late_df])
+    site_covid_df['site_id'] = site_id
+    return site_covid_df
+
+
+def yq7_9():
+    import pickle
+    import os
+    root = '/Users/lyam/PycharmProjects/lab-supply-prediction/xkw/pkls/1s/'
+    filePaths = os.listdir(root)
+    content_dict = dict()
+    for filePath in filePaths:
+        cur_content_dict = pickle.load(open(root + filePath, 'rb'))
+        for i in cur_content_dict:
+            content_dict[i] = cur_content_dict[i]
+    site_poly_all = pandas.read_csv(
+        '/Users/lyam/同步空间/数据/仓_gps_营业部_polygon_/上海营业站位置信息with合并围栏.csv',
+        engine='python',
+        skip_blank_lines=True)
+    covid_df = pandas.read_csv('/Users/lyam/同步空间/数据/疫情数据/covid_with_jd_gps.csv', engine='python',
+                               skip_blank_lines=True, encoding='utf-8',
+                               parse_dates=['dt'])
+    covid_df = covid_df[['id', 'control_type', 'county', 'town', 'subdivision', 'dt', 'lng', 'lat']]
+    covid_df.sort_values(ascending=True, inplace=True, by=['dt'])
+
+    districts = site_poly_all['county_name'].unique().tolist()
+    df_all = pandas.DataFrame()
+    for site_id in content_dict:
+        yq7(site_poly_all=site_poly_all, site_id=site_id, list_content=content_dict[site_id])
+        yq9(districts=districts, covid_df=covid_df)
+        yq9_2()
+        yq9_3(districts=districts)
+        df = yq9_4(site_id=site_id)
+        df_all = pandas.concat([df_all, df])
+    df_all.to_csv('all_sites_covid_grids.csv', index=False)
+    exit(0)
+
+
 if __name__ == '__main__':
-    srtp()
+    yq7_9()

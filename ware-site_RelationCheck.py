@@ -251,7 +251,7 @@ def old_trash():
                               skip_blank_lines=True)
     # storetype_df, site_df = draw(storetype_df, site_df)
     # site_df = site_df[['site_id_c', 'w2', 'h2', 'c2']]
-    site_df = site_df[['site_id_c']]  # all sites
+    site_df = site_df[['site_id_c']]  # all fomulated_files
     # storetype_df = storetype_df[['store_id_c', 'w1', 'h1', 'c1', 'delv_center_num_c', 'storetype']]
     storetype_df = storetype_df[['store_id_c', 'delv_center_num_c', 'store_name_c', 'storetype']]
     ws_df = pandas.read_csv('csvs/mergeCity后的仓至站.csv', engine='python', parse_dates=['sale_ord_dt_c'],

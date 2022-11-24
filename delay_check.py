@@ -168,7 +168,7 @@ def out_delv():
 
 def out_delv_no_distance():
     df = pandas.read_csv(
-        '/Users/lyam/同步空间/数据/四步骤时间/03_xkw_供应_王桥_20221008202603.csv', encoding='gbk',
+        '/Users/lyam/同步空间/数据/全阶段/03_xkw_供应_王桥_20221008202603.csv', encoding='gbk',
         parse_dates=['end_node_insp_tm', 'real_delv_tm'],
         engine='python', skip_blank_lines=True)
     df.dropna(subset=['end_node_insp_tm'], inplace=True)
@@ -190,7 +190,7 @@ def out_delv_no_distance():
     df.drop_duplicates(inplace=True)
 
     # 删除异常值
-    df = remove_outliers(df)
+    df = remove_outliers(df, 'delay_days', 'departure_dt')
 
     df['avg_delay_days'] = (
         df['delay_days'].groupby(df['departure_dt']).transform('mean'))
@@ -469,7 +469,7 @@ def findWarehouse():
     df_dt = df[['departure_dt', 'inflow']]
 
     df_all = pandas.read_csv(
-        '/Users/lyam/同步空间/数据/四步骤时间/03_xkw_供应_王桥_20221008202603.csv', encoding='gbk',
+        '/Users/lyam/同步空间/数据/全阶段/03_xkw_供应_王桥_20221008202603.csv', encoding='gbk',
         parse_dates=['end_node_insp_tm', 'real_delv_tm'],
         engine='python', skip_blank_lines=True)
 
@@ -489,7 +489,7 @@ def findWarehouse():
 
 def draw():
     df = pandas.read_csv(
-        '/Users/lyam/同步空间/数据/四步骤时间/03_xkw_供应_王桥_20221008202603.csv', encoding='gbk',
+        '/Users/lyam/同步空间/数据/全阶段/03_xkw_供应_王桥_20221008202603.csv', encoding='gbk',
         parse_dates=['end_node_insp_tm', 'real_delv_tm'],
         engine='python', skip_blank_lines=True)
 
@@ -506,7 +506,6 @@ def draw():
 
     # 重点分析这些仓库
     df = pandas.merge(df, df_warehouse, on='store_name_c', how='inner')
-
     df['arrival_dt'] = df['end_node_insp_tm'].dt.strftime('%m-%d')
     df['departure_dt'] = df['real_delv_tm'].dt.strftime('%m-%d')
 
@@ -514,29 +513,36 @@ def draw():
     df_inflow_from_warehouses = df.groupby(['store_name_c', 'arrival_dt']).size().unstack(fill_value=0)
     plt.rcParams["font.sans-serif"] = ["Arial Unicode MS"]  # 正常显示中文标签
     plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
-    plt.figure(figsize=(12, 10))
-    s1 = 200 / plt.gcf().dpi * 10
-    margin = 0.5 / plt.gcf().get_size_inches()[0]
-    plt.gcf().subplots_adjust(left=margin, right=1. - margin)
-    plt.gcf().set_size_inches(s1, plt.gcf().get_size_inches()[1])
 
     for idx, row in df_inflow_from_warehouses.iterrows():
-        plt.rcParams["font.sans-serif"] = ["Arial Unicode MS"]  # 正常显示中文标签
-        plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
-        plt.figure(figsize=(12, 10))
-        s1 = 200 / plt.gcf().dpi * 10
-        margin = 0.5 / plt.gcf().get_size_inches()[0]
-        plt.gcf().subplots_adjust(left=margin, right=1. - margin)
-        plt.gcf().set_size_inches(s1, plt.gcf().get_size_inches()[1])
-        print(idx)
-        print(row.values)
-        ax = sns.barplot(x=df_inflow_from_warehouses.columns, y=row.values)
-        ax.xaxis.set_major_locator(MultipleLocator(7))
-        ax.grid(True)  # 显示网格
-        ax.set_xlabel('入站日期')
-        ax.set_ylabel('单量')
-        ax.set_title(idx)
-        plt.show()
+        if idx == '上海商超B母婴玩具仓1号库':
+            plt.rcParams["font.sans-serif"] = ["Arial Unicode MS"]  # 正常显示中文标签
+            plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
+            print(idx)
+            print(row.values)
+            ax = sns.barplot(x=df_inflow_from_warehouses.columns, y=row.values, color='#F6432B')
+            ax.xaxis.set_major_locator(MultipleLocator(20))
+            ax.grid(True)  # 显示网格
+            ax.set_xlabel('入站日期')
+            ax.set_ylabel('单量')
+            ax.set_title(idx)
+            ax.set_ylim(0, 550)
+            plt.savefig(f'pngs/wierd_warehouses/{idx}.png')
+            plt.show()
+        elif idx == '广州商超B米面粮油仓5号库':
+            plt.rcParams["font.sans-serif"] = ["Arial Unicode MS"]  # 正常显示中文标签
+            plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
+            print(idx)
+            print(row.values)
+            ax = sns.barplot(x=df_inflow_from_warehouses.columns, y=row.values, color='#81CA86')
+            ax.xaxis.set_major_locator(MultipleLocator(20))
+            ax.grid(True)  # 显示网格
+            ax.set_xlabel('入站日期')
+            ax.set_ylabel('单量')
+            ax.set_title(idx)
+            ax.set_ylim(0, 550)
+            plt.savefig(f'pngs/wierd_warehouses/{idx}.png')
+            plt.show()
 
 
 def stay_priority_check():
@@ -590,10 +596,10 @@ def stay_priority_check():
 
 if __name__ == '__main__':
     # analyse('sale_ord_tm', 'first_sorting_tm', '入仓-出仓')
-    analyse('first_sorting_tm', 'end_node_insp_tm', '出仓-入站', True)
+    # analyse('first_sorting_tm', 'end_node_insp_tm', '出仓-入站', True)
     # out_delv_no_distance()
     # findWarehouse()
-    # draw()
+    draw()
     exit(0)
     stay_priority_check()
     exit(0)

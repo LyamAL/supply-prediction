@@ -1,12 +1,17 @@
 import datetime
+import pickle
 import re
 
 import pandas
-from folium import folium, plugins
+import folium
+from folium import plugins
+from matplotlib import pyplot as plt
 from matplotlib.ticker import MultipleLocator
 
+import util
 from delay_check import levelize, remove_outliers, toHours, delevelize
-from util import plotDotforDataframe
+from draw_util import series_cdf
+from root_util import changePath, DISK_PATH_MACHINE
 
 
 def center():
@@ -100,7 +105,7 @@ def Routing(df):
     df['route_dt'] = df['start_opt_tm'].dt.strftime('%m-%d')
     df.sort_values(by='route_dt', inplace=True)
     node_addr_df = pandas.read_csv(
-        DISK_PATH_MACHINE+'数据/全阶段/分拣中心addr.csv', engine='python',
+        DISK_PATH_MACHINE + '数据/全阶段/分拣中心addr.csv', engine='python',
         skip_blank_lines=True)
     node_addr_df.drop(['Unnamed: 0', 'update_time', 'node_name'], inplace=True, axis=1)
 
@@ -122,7 +127,7 @@ def Routing(df):
         data = df_res[['lat', 'lng', 'weight']].values.tolist()
         data_all.append(data)
 
-        df_res.apply(lambda x: plotDotforDataframe(x, map), axis=1)
+        df_res.apply(lambda x: util.plotDotforDataframe(x, map), axis=1)
 
     gradient = {.2: "blue", .4: "cyan", .6: "lime", .8: "yellow", 1: "red"}
     hm = plugins.HeatMapWithTime(data_all, radius=50, position='topleft', gradient=gradient,
@@ -221,18 +226,18 @@ def unsent(x, dt1, dt2):
 def cal_timing(df, attr, dt1, dt2):
     col1 = attr + '_seconds'
     col2 = attr + '_days'
-    col4 = attr + '_unsent'
+    # col4 = attr + '_unsent'
     col5 = 'avg_' + attr + '_days'
-    col7 = 'sum_' + attr + '_unsent'
+    # col7 = 'sum_' + attr + '_unsent'
     df.dropna(subset=[dt1], inplace=True)
     df.dropna(subset=[dt2], inplace=True)
 
     df[col1] = df.apply(
         lambda x: (x[dt2] - x[dt1]).total_seconds(), axis=1)
-    df[col4] = df.apply(
-        lambda x: unsent(x, dt1, dt2), axis=1)
+    # df[col4] = df.apply(
+    #     lambda x: unsent(x, dt1, dt2), axis=1)
     df[col2] = df.apply(
-        lambda x: toHours(x[col1]), axis=1, result_type='expand')
+        lambda x: toHours(x[col1]), axis=1)
 
     df['dt'] = df[dt2].dt.strftime('%m-%d')
     df.drop_duplicates(inplace=True)
@@ -240,9 +245,10 @@ def cal_timing(df, attr, dt1, dt2):
 
     df[col5] = (
         df[col2].groupby(df['dt']).transform('mean'))
-    df[col7] = (
-        df[col4].groupby(df['dt']).transform('sum'))
-    df = df[['dt', col5, col7]]
+    # df[col7] = (
+    #     df[col4].groupby(df['dt']).transform('sum'))
+    df = df[['dt', col5]]
+    # df = df[['dt', col5, col7]]
     df.drop_duplicates(inplace=True)
     return col5, df
 
@@ -254,64 +260,55 @@ def cal_Quantity(df, attr, dt1, dt2):
     return df
 
 
-def TimingStackedAnalysis(ware_dfg, df):
-    for k, df_dis in ware_dfg:
-        print(k)
-        df_dis_waybill = pandas.merge(df_dis, df, left_on='store_name_c', right_on=['start_node_name'], how='left')
-        col_opt, df_warehouse_opt = cal_timing(df_dis_waybill, 'warehouse', 'start_opt_tm',
-                                               'route_start_node_real_arv_tm')
-        col_ware_center, df_ware_center = cal_timing(df_dis_waybill, 'ware_center', 'route_start_node_real_send_tm',
-                                                     'start_sorting_real_insp_tm')
-        # col_warehouse, df_warehouse = cal_timing(df_dis_waybill, 'warehouse', 'route_start_node_real_arv_tm',
-        #                                          'route_start_node_real_send_tm')
-        # col_ware_center, df_ware_center = cal_timing(df_dis_waybill, 'ware_center', 'route_start_node_real_send_tm',
-        #                                              'start_sorting_real_insp_tm')
-        # col_start_center_in_out, df_start_center_in_out = cal_timing(df_dis_waybill, 'start_center_in_out',
-        #                                                              'start_sorting_real_insp_tm',
-        #                                                              'start_sorting_real_send_tm')
-        # col_start_center_out_end_in, df_start_center_out_end_in = cal_timing(df_dis_waybill, 'start_center_out_end_in',
-        #                                                                      'start_sorting_real_send_tm',
-        #                                                                      'end_sorting_real_arv_tm')
-        # col_end_center_in_out, df_end_center_in_out = cal_timing(df_dis_waybill, 'end_center_in_out',
-        #                                                          'end_sorting_real_arv_tm',
-        #                                                          'end_sorting_real_ship_tm')
-        # col_site_delv, df_site_delv = cal_timing(df_dis_waybill, 'site_delv',
-        #                                          'end_sorting_real_ship_tm',
-        #                                          'real_delv_tm')
-        df_res = pandas.merge(df_warehouse_opt, df_ware_center, on='dt', how='outer')
-        # df_res = pandas.merge(df_res, df_start_center_in_out, on='dt', how='outer')
-        # df_res = pandas.merge(df_res, df_start_center_out_end_in, on='dt', how='outer')
-        # df_res = pandas.merge(df_res, df_end_center_in_out, on='dt', how='outer')
-        # df_res = pandas.merge(df_res, df_site_delv, on='dt', how='outer')
+def TimingStackedAnalysis(df, info):
+    # 上海苏州
+    # df['start_opt_dt'] = df['start_opt_tm'].apply(
+    #     lambda x: x.replace(hour=0, minute=0, second=0))
+    # df = df[
+    #     (df['start_opt_dt'] < datetime.datetime(2022, 7, 1)) & (df['start_opt_dt'] >= datetime.datetime(2022, 3, 1))]
+    # col_opt, df_warehouse_opt = cal_timing(df, 'warehouse', 'route_start_node_real_arv_tm',
+    #                                        'route_start_node_real_send_tm')
+    # col_start_center_in_out, df_start_center_in_out = cal_timing(df, 'start_center_in_out',
+    #                                                              'start_sorting_real_insp_tm',
+    #                                                              'start_sorting_real_send_tm')
+    # col_end_center_in_out, df_end_center_in_out = cal_timing(df, 'end_center_in_out',
+    #                                                          'end_sorting_real_arv_tm',
+    #                                                          'end_sorting_real_ship_tm')
+    # col_site_delv, df_site_delv = cal_timing(df, 'site_delv',
+    #                                          'end_sorting_real_ship_tm',
+    #                                          'real_delv_tm')
+    # df_res = pandas.merge(df_warehouse_opt, df_start_center_in_out, on='dt', how='outer')
+    # df_res = pandas.merge(df_res, df_end_center_in_out, on='dt', how='outer')
+    # df_res = pandas.merge(df_res, df_site_delv, on='dt', how='outer')
+    # df_res.dropna(inplace=True)
+    # df_res.to_csv(f'csvs/{info}four_stages_timing.csv', index=False)
+    df_res = pandas.read_csv(
+        f'csvs/{info}four_stages_timing.csv', engine='python',
+        skip_blank_lines=True)
+    df_res = df_res[
+        ['dt', 'avg_warehouse_days', 'avg_start_center_in_out_days', 'avg_end_center_in_out_days',
+         'avg_site_delv_days']]
+    # df_res = df_res[
+    #     ['dt', col_opt, col_start_center_in_out, col_end_center_in_out, col_site_delv]]
+    df_res.drop_duplicates(inplace=True)
+    df_res.sort_values(by='dt', inplace=True)
+    from matplotlib import pyplot as plt
+    plt.rcParams["font.sans-serif"] = ["Arial Unicode MS"]  # 正常显示中文标签
+    plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
 
-        # df_dis_waybill = df_dis_waybill[
-        #     ['dt', col_opt, col_ware_center]]
-        df_res.drop_duplicates(inplace=True)
-        # df.drop('Unnamed: 0', inplace=True, axis=1)
-        df_res.sort_values(by='dt', inplace=True)
-        from matplotlib import pyplot as plt
-        plt.rcParams["font.sans-serif"] = ["Arial Unicode MS"]  # 正常显示中文标签
-        plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
-        plt.figure(figsize=(12, 10))
+    ax = df_res.set_index('dt').plot(kind='bar', stacked=True,
+                                     color=['#D98880', '#7DCEA0', '#F19F6A', '#7EA1E1', '#6ECAD0', '#90909F'])
+    ax.xaxis.set_major_locator(MultipleLocator(15))
+    ax.grid(True)  # 显示网格
+    ax.set_xlabel('日期')
+    ax.set_ylabel('天数')
+    ax.set_ylim(0, 20)
+    ax.legend(labels=['出仓', '始分拣中心', '末分拣中心', '入站'])
+    ax.tick_params(axis='x', labelrotation=0)
+    ax.set_title(f'{info}仓库各阶段耗时分析')
 
-        ax = df_res.set_index('dt').plot(kind='bar', stacked=True,
-                                         color=['#D98880', '#7DCEA0', '#F19F6A', '#7EA1E1', '#6ECAD0', '#90909F'])
-        ax.xaxis.set_major_locator(MultipleLocator(7))
-        ax.grid(True)  # 显示网格
-        ax.set_xlabel('日期')
-        ax.set_ylabel('天数')
-        # ax.legend(labels=['入仓-出仓', '出仓-入始分拣中心', '始分拣中心的入和出', '出始分拣中心-入末分拣中心',
-        #                   '末分拣中心入和出', '末分拣中心-妥投'])
-        ax.legend(labels=['处理-接单', '接单-封车打包'])
-        ax.tick_params(axis='x', labelrotation=0)
-        ax.set_title('{km} 仓库各阶段耗时分析'.format(km=delevelize(k)))
-
-        s1 = 200 / plt.gcf().dpi * 10 + 2 * 0.2
-        margin = 0.5 / plt.gcf().get_size_inches()[0]
-        plt.gcf().subplots_adjust(left=margin, right=1. - margin)
-        plt.gcf().set_size_inches(s1, plt.gcf().get_size_inches()[1])
-        plt.savefig('pngs/全阶段/仓库端/{km}_timing.png'.format(km=k))
-        plt.show()
+    plt.savefig(f'pngs/全阶段/{info}_timing.png')
+    plt.show()
     pass
 
 
@@ -496,31 +493,41 @@ def analyse():
              'start_sorting_real_ship_tm', 'end_sorting_real_arv_tm', 'end_sorting_real_ship_tm',
              'end_sorting_real_send_tm']
     df = pandas.read_csv(
-        DISK_PATH_MACHINE+'数据/全阶段/所有订单数据.csv',
+        DISK_PATH_MACHINE + '数据/全阶段/所有订单数据.csv',
         parse_dates=dt_ls,
         engine='python', skip_blank_lines=True)
     # for i in dt_ls:
     #     df.dropna(subset=[i], inplace=True)
-    route_distribution(df)
+    route_distribution_meta_path_check(df)
     # Routing(df)
-
     address_df = pandas.read_csv(
-        DISK_PATH_MACHINE+'数据/仓_gps_营业部_polygon_/仓库地址坐标品类距离_v3.csv', engine='python',
+        DISK_PATH_MACHINE + '数据/仓_gps_营业部_polygon_/仓库地址坐标品类距离_v3.csv', engine='python',
         skip_blank_lines=True)
-    city_df = pandas.read_csv(
-        DISK_PATH_MACHINE+'数据/仓_gps_营业部_polygon_/城市到上海距离.csv', engine='python',
-        skip_blank_lines=True)
+    # city_df = pandas.read_csv(
+    #     DISK_PATH_MACHINE + '数据/仓_gps_营业部_polygon_/城市到上海距离.csv', engine='python',
+    #     skip_blank_lines=True)
     warehouse_df = df.drop_duplicates(subset=['start_node_name'])
     warehouse_df = warehouse_df[['start_node_name']]  # all warehouses in table
     warehouse_df = pandas.merge(address_df, warehouse_df, left_on='store_name_c', right_on=['start_node_name'],
                                 how='right')
     warehouse_df.dropna(inplace=True, subset=['city'])
-    warehouse_df = pandas.merge(city_df, warehouse_df, on=['city'], how='right')
-    warehouse_df['distance_level'] = warehouse_df.apply(lambda x: levelize(x), axis=1)
-    ware_dfg = warehouse_df.groupby('distance_level')
+    warehouse_df_ss = warehouse_df[warehouse_df['city'].isin(['上海市', '苏州市'])]
+    warehouse_df_nss = warehouse_df[~warehouse_df['city'].isin(['上海市', '苏州市'])]
+    warehouse_df_nss = warehouse_df_nss[['city', 'start_node_name']].drop_duplicates()
+    warehouse_df_ss = warehouse_df_ss[['city', 'start_node_name']].drop_duplicates()
+
+    df_covid = pandas.merge(df, warehouse_df_ss, how='left', on='start_node_name').dropna(subset=['city'])
+    df_safe = pandas.merge(df, warehouse_df_nss, how='left', on='start_node_name').dropna(subset=['city'])
+
+    TimingStackedAnalysis(df_covid, '上海-苏州')
+    TimingStackedAnalysis(df_safe, '其他城市')
+    exit(0)
+    # warehouse_df = pandas.merge(city_df, warehouse_df, on=['city'], how='right')
+    # warehouse_df['distance_level'] = warehouse_df.apply(lambda x: levelize(x), axis=1)
+    # ware_dfg = warehouse_df.groupby('distance_level')
     # OutOfTime(ware_dfg, df)
     # TimingAnalysis(ware_dfg, df, '入仓-出仓', 'route_start_node_real_arv_tm', 'route_start_node_real_send_tm')
-    TimingStackedAnalysis(ware_dfg, df)
+    # TimingStackedAnalysis(ware_dfg, df)
     # RoutingCount(ware_dfg, df)
 
     # TimingSidedAnalysis(ware_dfg, df)
@@ -552,24 +559,13 @@ def analyse():
     # exit(0)
 
 
-def route_distribution(df):
+def splitRoutes(df):
     df_res = pandas.DataFrame()
-    df.dropna(subset=['real_delv_tm'], inplace=True)
-    df.dropna(subset=['recommended_routing'], inplace=True)
-    df.dropna(subset=['start_opt_tm'], inplace=True)
-    df['start_opt_tm'] = df['start_opt_tm'].apply(
-        lambda x: x.replace(hour=0, minute=0, second=0))
-
-    df = df[df['real_delv_tm'] <= datetime.datetime(2022, 8, 15)]
-    df = df[df['real_delv_tm'] >= datetime.datetime(2022, 1, 1)]
-    df = df[df['start_opt_tm'] <= datetime.datetime(2022, 8, 15)]
-    df = df[df['start_opt_tm'] >= datetime.datetime(2022, 1, 1)]
-    df['dt'] = df['start_opt_tm'].dt.strftime('%m-%d')
-    df.sort_values(by='dt', inplace=True)
-    df = df[['waybill_code', 'recommended_routing', 'dt']]
     for i, x in df.iterrows():
         routes = x.recommended_routing.split('->')
-        data = {'dt': x['dt']}
+        if not '王桥' in routes[-1]:
+            continue
+        data = {}
         k = 1
         for idx, route in enumerate(routes):
             if '接货仓' in route:
@@ -581,29 +577,362 @@ def route_distribution(df):
                 data['warehouse'] = pairs[2]
             else:
                 col = 'Route' + str(k)
-                data[col] = pairs[2]
+                data[col] = pairs[1]
                 k += 1
+                if '王桥' in pairs[2]:
+                    break
+                if '021F008' == pairs[1]:
+                    break
         df_res = df_res.append([data], ignore_index=False)
-    print(len(df_res['warehouse'].unique()))
-    centers = pandas.unique(df[['Route1', 'Route2', 'Route3', 'Route4', 'Route5', 'Route6']].values.ravel('K'))
-    print(len(centers))
-    df_res.to_csv('csvs/route_df.csv', index=False)
-    exit(0)
+
+    return df_res
+
+
+def routesPairs(df):
+    rts = df.columns
+    df_ = pandas.DataFrame()
+    for i, r in df.iterrows():
+        path = {}
+        flag = True
+        lastCol = None
+        for col in rts:
+            if col == 'warehouse':
+                continue
+            if pandas.notna(r[col]):
+                if flag:
+                    path['route_a'] = r['warehouse']
+                    path['route_b'] = r[col]
+                    lastCol = col
+                    flag = False
+                    df_ = df_.append([path], ignore_index=True)
+                else:
+                    path['route_a'] = r[lastCol]
+                    path['route_b'] = r[col]
+                    lastCol = col
+                    df_ = df_.append([path], ignore_index=True)
+            else:
+                break
+        pass
+    df_.drop_duplicates(inplace=True)
+    return df_
+
+
+m = folium.Map(location=[31.3004, 121.294], zoom_start=6,
+               attr='疫情物流路由', )
+
+
+def plotDotforDataframe(x):
+    ls = ['四川省', '广东省', '北京省', '湖南省', '湖北省', '天津省']
+    if x.province in ls:
+        c = 'yellow'
+    else:
+        c = 'green'
+    folium.CircleMarker(location=[x.lat, x.lng],
+                        radius=1, fillOpacity=0.5, color=c,
+                        weight=4).add_to(m)
+
+
+def plotLine(x):
+    loc = [(x.lat_a, x.lng_a), (x.lat_b, x.lng_b)]
+    if x['flag'] == 1:
+        color = '#EC5F36'
+        opacty = 0.7
+        wt = 3
+    else:
+        color = 'blue'
+        opacty = 0.5
+        wt = 1.5
+    folium.PolyLine(loc,
+                    color=color,
+                    weight=wt,
+                    opacity=opacty).add_to(m)
+    folium.CircleMarker(location=[x.lat_a, x.lng_a],
+                        radius=1, fillOpacity=0.5, color='yellow',
+                        weight=4).add_to(m)
+    folium.CircleMarker(location=[x.lat_b, x.lng_b],
+                        radius=1, fillOpacity=0.5, color='green',
+                        weight=4).add_to(m)
     pass
 
 
-DISK_PATH_MACHINE = '/Users/lyam/同步空间/'
+def route_distribution_draw():
+    df_normal = pandas.read_csv(
+        'temp_routes_pair_normal.csv', engine='python',
+        skip_blank_lines=True)
+    df_covid = pandas.read_csv(
+        'temp_routes_pair_covid.csv', engine='python',
+        skip_blank_lines=True)
+
+    df_covid_new = pandas.concat([df_covid, df_normal, df_normal]).drop_duplicates(keep=False)
+    center_addr_df = pandas.read_csv(
+        DISK_PATH_MACHINE + '数据/全阶段/分拣中心addr.csv', engine='python',
+        skip_blank_lines=True)
+    center_addr_df['province_name'] = center_addr_df['province_name'].apply(lambda x: x + '省')
+    ware_addr_df = pandas.read_csv(
+        DISK_PATH_MACHINE + '数据/仓_gps_营业部_polygon_/仓库地址坐标品类距离_v3.csv', engine='python',
+        skip_blank_lines=True)
+    pro_df = pandas.read_csv(
+        DISK_PATH_MACHINE + '数据/公开数据/省份-省会城市gps.csv', engine='python',
+        skip_blank_lines=True)
+    center_addr_df = center_addr_df[['node_code', 'province_name']].drop_duplicates().dropna()
+    ware_addr_df = ware_addr_df[['store_name_c', 'province']].drop_duplicates().dropna()
+
+    df_normal = pandas.merge(df_normal, center_addr_df, left_on='route_a', right_on='node_code', how='left')
+    df_normal = pandas.merge(df_normal, ware_addr_df, left_on='route_a', right_on='store_name_c', how='left')
+    df_normal['province_a'] = df_normal.apply(
+        lambda x: x['province'] if pandas.isna(x['province_name']) else x['province_name'], axis=1)
+    df_normal = df_normal[['route_b', 'province_a']].dropna()
+
+    df_normal = pandas.merge(df_normal, center_addr_df, left_on='route_b', right_on='node_code', how='left').dropna()
+    df_normal = df_normal[['province_a', 'province_name']].drop_duplicates().dropna()
+
+    df_covid_new = pandas.merge(df_covid_new, center_addr_df, left_on='route_a', right_on='node_code', how='left')
+    df_covid_new = pandas.merge(df_covid_new, ware_addr_df, left_on='route_a', right_on='store_name_c', how='left')
+    df_covid_new['province_a'] = df_covid_new.apply(
+        lambda x: x['province'] if pandas.isna(x['province_name']) else x['province_name'], axis=1)
+    df_covid_new = df_covid_new[['route_b', 'province_a']].dropna()
+
+    df_covid_new = pandas.merge(df_covid_new, center_addr_df, left_on='route_b', right_on='node_code',
+                                how='left').dropna()
+    df_covid_new = df_covid_new[['province_a', 'province_name']].drop_duplicates().dropna()
+    df_covid_new = pandas.concat([df_covid_new, df_normal, df_normal]).drop_duplicates(keep=False)
+    df_covid_new = df_covid_new[~df_covid_new['province_name'].isin(['内蒙古自治区', '甘肃省'])]
+    df_normal = df_normal[~df_normal['province_name'].isin(['内蒙古自治区', '甘肃省'])]
+    df_covid_new = df_covid_new[
+        ~df_covid_new['province_a'].isin(['内蒙古自治区', '甘肃省'])]
+    df_normal = df_normal[
+        ~df_normal['province_a'].isin(['内蒙古自治区', '甘肃省'])]
+
+    df_normal = pandas.merge(df_normal, pro_df, left_on='province_a', right_on='province', how='left').dropna()
+    df_normal = df_normal.rename(columns={'lng': 'lng_a', 'lat': 'lat_a'})
+    df_normal = pandas.merge(df_normal, pro_df, left_on='province_name', right_on='province', how='left').dropna()
+    df_normal = df_normal.rename(columns={'lng': 'lng_b', 'lat': 'lat_b'})
+
+    df_covid_new = pandas.merge(df_covid_new, pro_df, left_on='province_a', right_on='province', how='left').dropna()
+    df_covid_new = df_covid_new.rename(columns={'lng': 'lng_a', 'lat': 'lat_a'})
+    df_covid_new = pandas.merge(df_covid_new, pro_df, left_on='province_name', right_on='province', how='left').dropna()
+    df_covid_new = df_covid_new.rename(columns={'lng': 'lng_b', 'lat': 'lat_b'})
+
+    df_covid_new['flag'] = 1
+    df_normal['flag'] = 0
+    df = pandas.concat([df_normal, df_covid_new])
+    df.apply(plotLine, axis=1)
+    m.save('htmls/routes_distribution_province_level.html')
+    # m = folium.Map(location=[31.3004, 121.294], zoom_start=6,
+    #                attr='疫情物流路由', )
+    # df_normal.apply(plotLine, axis=1)
+    # m.save('htmls/routes_distribution_province_level_common.html')
+    exit(0)
 
 
-def changePath(flag):
-    global DISK_PATH_MACHINE
-    if flag == 1:
-        DISK_PATH_MACHINE = '/Users/lyam/同步空间/'
-    else:
-        DISK_PATH_MACHINE = 'F:/BaiduSyncdisk/'
+def countPaths(x):
+    ls = x.split('->')
+    if '接货仓' in x:
+        return len(ls) - 1
+    return len(ls)
+
+
+# 只留分拣中心
+def interPath(x):
+    ls = x.split('->')
+    res = ''
+    for idx, name in enumerate(ls):
+        if idx == 0:  # 不要仓
+            continue
+        if '接货仓' in name:
+            continue
+        if idx == len(ls) - 1:  # 不要站
+            continue
+        res = res + name + '->'
+    return res
+
+
+def route_distribution_meta_path_check(df):
+    df.dropna(subset=['real_delv_tm'], inplace=True)
+    df.dropna(subset=['recommended_routing'], inplace=True)
+    df.dropna(subset=['start_opt_tm'], inplace=True)
+    df['start_opt_tm'] = df['start_opt_tm'].apply(
+        lambda x: x.replace(hour=0, minute=0, second=0))
+    date_list = pandas.date_range(start=df['start_opt_tm'].min(), end=df['start_opt_tm'].max()).to_pydatetime().tolist()
+    dates_interval = list(util.chunks(date_list, 14))
+    df_after_group = pandas.DataFrame()
+    for idx, interval in enumerate(dates_interval):
+        df_ = df[(df['start_opt_tm'].isin(interval))]
+        # 检查中间路由占比
+        df_.drop_duplicates(subset=['recommended_routing'], inplace=True)
+        df_['resigned_routes'] = df_['recommended_routing'].apply(lambda x: interPath(x))
+        res = df_['resigned_routes'].value_counts(ascending=True)
+
+        total = df_.shape[0]
+        series_cdf(res, attr='resigned_routes',
+                   title=f'中间路由占比cdf图{interval[0].strftime("%Y%m%d")}-{interval[-1].strftime("%Y%m%d")}-total({total})')
+
+        # res.plot.pie(autopct='%.2f')
+        # plt.title(f'inter_path{interval[0].strftime("%Y%m%d")}-{interval[-1].strftime("%Y%m%d")}-total({total})')
+        # plt.savefig(f'pngs/pies/中间路由占比{interval[0].strftime("%Y%m%d")}-{interval[-1].strftime("%Y%m%d")}.png')
+        # plt.show()
+        # 检查元路径长度
+        # df_.drop_duplicates(subset=['recommended_routing'], inplace=True)
+        # df_['length'] = df_['recommended_routing'].apply(lambda x: countPaths(x))
+        # res = df_['length'].value_counts(ascending=True)
+        # total = df_.shape[0]
+        # res.plot.pie(autopct='%.2f')
+        # plt.title(f'length_percentage{interval[0].strftime("%Y%m%d")}-{interval[-1].strftime("%Y%m%d")}-total({total})')
+        # plt.savefig(f'pngs/pies/元路径个数占比{interval[0].strftime("%Y%m%d")}-{interval[-1].strftime("%Y%m%d")}.png')
+        # plt.show()
+
+        # 检查仓的重复性1
+        # df_.drop_duplicates(subset=['recommended_routing'], inplace=True)
+        # res = df_['start_node_name'].value_counts()
+        # series_cdf(res, attr='start_node_name',
+        #            title=f'仓库重复的cdf图{interval[0].strftime("%Y%m%d")}-{interval[-1].strftime("%Y%m%d")}')
+        # 检查仓的重复性2
+        # df_['group'] = f'{interval[0].strftime("%m%d")}{interval[-1].strftime("%m%d")}'
+        # df_after_group = pandas.concat([df_after_group, df_], ignore_index=True)  # 每个csv都concat起来
+        # 检查路径的数量
+        # df_['group'] = f'{interval[0].strftime("%m%d")}{interval[-1].strftime("%m%d")}'
+        # df_after_group = pandas.concat([df_after_group, df_], ignore_index=True)  # 每个csv都concat起来
+        # 检查路径重复的次数的cdf图
+        # res = df_['recommended_routing'].value_counts()
+        # series_cdf(res, attr='recommended_routing',
+        #            title=f'路径数量cdf图{interval[0].strftime("%Y%m%d")}-{interval[-1].strftime("%Y%m%d")}')
+    # plt.figure(figsize=(12, 12))
+    # df_after_group.groupby('group')['start_node_name'].nunique().plot(kind='bar')
+    # plt.title('warehouse_unique_count_each_14_days')
+    # plt.savefig('pngs/仓库重复情况.png')
+    # plt.show()
+
+    exit(0)
+
+
+def route_distribution(df):
+    df.dropna(subset=['real_delv_tm'], inplace=True)
+    df.dropna(subset=['recommended_routing'], inplace=True)
+    df.dropna(subset=['start_opt_tm'], inplace=True)
+    df['start_opt_tm'] = df['start_opt_tm'].apply(
+        lambda x: x.replace(hour=0, minute=0, second=0))
+
+    df_covid = df[(df['start_opt_tm'] < datetime.datetime(2022, 7, 1)) & (
+            df['start_opt_tm'] >= datetime.datetime(2022, 3, 1))]
+    df_normal = df[(df['start_opt_tm'] < datetime.datetime(2022, 3, 1)) | (
+            df['start_opt_tm'] >= datetime.datetime(2022, 7, 1))]
+
+    df_covid = df_covid[['recommended_routing']].drop_duplicates()
+    df_normal = df_normal[['recommended_routing']].drop_duplicates()
+    df_covid_routes = splitRoutes(df_covid).drop_duplicates()
+    df_normal_routes = splitRoutes(df_normal).drop_duplicates()
+    df_covid_routes_pairs = routesPairs(df_covid_routes)
+    df_normal_routes_pairs = routesPairs(df_normal_routes)
+
+    df_normal_routes_pairs.to_csv('temp_routes_pair_normal.csv', index=False)
+    df_covid_routes_pairs.to_csv('temp_routes_pair_covid.csv', index=False)
+    exit(0)
+
+
+def filter_warehouses(df):
+    warehouse_df_all = pandas.read_csv(
+        '/Users/lyam/同步空间/数据/仓/warehouse_features_v3.csv',
+        engine='python',
+        skip_blank_lines=True)
+    df = df[df['start_node_name'].isin(warehouse_df_all['store_name_c'].tolist())]
+    return df
+
+
+def filter_sites(df):
+    site_df_all = pandas.read_csv(
+        '/Users/lyam/同步空间/数据/营业站/site_features_covid.csv',
+        engine='python',
+        skip_blank_lines=True)
+    df = df[df['end_node_name'].isin(site_df_all['node_name'].tolist())]
+    return df
+
+
+def AddEdge(data, nodeName):
+    nodeAdded = 0
+    for tpl in data:
+        if nodeName == tpl[0]:
+            tpl[1] += 1
+            # ls = list(tpl)
+            # ls[1] += 1
+            # tpl = tuple(ls)
+            nodeAdded = 1
+            break
+    if not nodeAdded:
+        data.append([nodeName, 1])
+    return data
+
+
+def get_graph_dict(path):
+    df = pandas.read_csv(
+        path,
+        parse_dates=['real_delv_tm', 'start_opt_tm'],
+        engine='python', skip_blank_lines=True)
+
+    df.dropna(subset=['real_delv_tm'], inplace=True)
+    df.dropna(subset=['recommended_routing'], inplace=True)
+    df.dropna(subset=['start_opt_tm'], inplace=True)
+    df = df[['start_node_name', 'recommended_routing', 'end_node_name', 'start_opt_tm']].drop_duplicates()
+    df = filter_warehouses(df)
+    df = filter_sites(df)
+
+    date_list = pandas.date_range(start=df['start_opt_tm'].min(), end=df['start_opt_tm'].max()).to_pydatetime().tolist()
+    dates_interval = list(util.chunks(date_list, 14))
+    res_dict = dict()
+    res_list = list()
+    for idx, interval in enumerate(dates_interval):
+        df_ = df[(df['start_opt_tm'].isin(interval))]
+        dfg_ = df_.groupby('start_node_name')
+        for warehouse_nm, group in dfg_:
+            # 第一个分拣中心是仓的邻居，最后一个分拣中心是站的邻居，分拣中心和分拣中心之间互为邻居
+            warehouse_data = res_dict[warehouse_nm] if warehouse_nm in res_dict else list()
+            for idx, row in group.iterrows():
+                re_center = re.compile('([\u4e00-\u9fa5]+分拣中心)')
+                center_list = re_center.findall(row['recommended_routing'])
+                site_nm = row['end_node_name']
+
+                if len(center_list) == 0:
+                    warehouse_data = AddEdge(warehouse_data, site_nm)
+                    # 站的聚合
+                    site_data = res_dict[site_nm] if site_nm in res_dict else list()
+                    site_data = AddEdge(site_data, warehouse_nm)
+                    res_dict[site_nm] = site_data
+                    continue
+
+                first_center = center_list[0]
+                last_center = center_list[-1]
+                warehouse_data = AddEdge(warehouse_data, first_center)
+                # 站的聚合
+                site_data = res_dict[site_nm] if site_nm in res_dict else list()
+                site_data = AddEdge(site_data, last_center)
+                res_dict[site_nm] = site_data
+                # 分拣中心的聚合：前后节点
+                for i, center_nm in enumerate(center_list):
+                    cur_center_data = res_dict[center_nm] if center_nm in res_dict else list()
+                    if i == 0:
+                        cur_center_data = AddEdge(cur_center_data, warehouse_nm)
+                    else:
+                        cur_center_data = AddEdge(cur_center_data, center_list[i - 1])
+                    if i + 1 == len(center_list):
+                        cur_center_data = AddEdge(cur_center_data, site_nm)
+                    else:
+                        cur_center_data = AddEdge(cur_center_data, center_list[i + 1])
+                    res_dict[center_nm] = cur_center_data
+
+            res_dict[warehouse_nm] = warehouse_data
+
+        res_list.append(res_dict)
+        res_dict = dict()
+    with open('heterogeneous_relation.pkl', 'wb') as f:
+        pickle.dump(res_list, f)
 
 
 if __name__ == '__main__':
-    # changePath()
-    analyse()
+    changePath(1)
+    # TimingStackedAnalysis(None, '上海-苏州')
+    # TimingStackedAnalysis(None, '其他城市')
+    # TimingStackedAnalysis(None, '其他城市')
+    # route_distribution_draw()
+    # analyse()
     # drawSided()
+    path = DISK_PATH_MACHINE + '数据/全阶段/所有订单数据.csv'
+    get_graph_dict(path)

@@ -85,4 +85,3 @@ if __name__ == '__main__':
                         # break
         cur_date += datetime.timedelta(days=1)
     site_df.to_csv('/Users/lyam/同步空间/数据/疫情场景数据/site_with_covid_info_v3.csv', index=False)
-

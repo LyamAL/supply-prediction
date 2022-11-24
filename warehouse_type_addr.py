@@ -336,35 +336,35 @@ def extractProvince_City():
 def cal_distance():
     province_df = warehouse_df.drop_duplicates(subset=['province'])
     province_df = province_df[['province']]
-    city_df = warehouse_df.drop_duplicates(subset=['city'])
-    city_df = city_df[['city']]
+    # city_df = warehouse_df.drop_duplicates(subset=['city'])
+    # city_df = city_df[['city']]
 
     province_df['pro_lat'] = 0
     province_df['pro_lng'] = 0
-    city_df['city_lng'] = 0
-    city_df['city_lat'] = 0
+    # city_df['city_lng'] = 0
+    # city_df['city_lat'] = 0
 
     while len(province_df[province_df['pro_lat'] == 0]) > 0:
         province_df[['pro_lng', 'pro_lat']] = province_df.apply(
             lambda x: util.geocodeBDetailed(x['province']) if x['pro_lat'] == 0 else (x['pro_lng'], x['pro_lat']),
             axis=1,
             result_type='expand')
-    while len(city_df[city_df['city_lat'] == 0]) > 0:
-        city_df[['city_lng', 'city_lat']] = city_df.apply(
-            lambda x: util.geocodeBDetailed(x['city']) if x['city_lat'] == 0 else (x['city_lng'], x['city_lat']),
-            axis=1,
-            result_type='expand')
+    # while len(city_df[city_df['city_lat'] == 0]) > 0:
+    #     city_df[['city_lng', 'city_lat']] = city_df.apply(
+    #         lambda x: util.geocodeBDetailed(x['city']) if x['city_lat'] == 0 else (x['city_lng'], x['city_lat']),
+    #         axis=1,
+    #         result_type='expand')
 
-    province_df['pro_dis'] = province_df.apply(
-        lambda x: util.distance(x['pro_lng'], x['pro_lat'], 121.4737021, 31.2303904),
-        axis=1)
-    city_df['city_dis'] = city_df.apply(lambda x: util.distance(x['city_lng'], x['city_lat'], 121.4737021, 31.2303904),
-                                        axis=1)
+    # province_df['pro_dis'] = province_df.apply(
+    #     lambda x: util.distance(x['pro_lng'], x['pro_lat'], 121.4737021, 31.2303904),
+    #     axis=1)
+    # city_df['city_dis'] = city_df.apply(lambda x: util.distance(x['city_lng'], x['city_lat'], 121.4737021, 31.2303904),
+    #                                     axis=1)
 
-    province_df.to_csv('F:\myStuff\数据\仓_gps_营业部_polygon_\省份到上海距离.csv', index=False)
-    city_df.to_csv('F:\myStuff\数据\仓_gps_营业部_polygon_\城市到上海距离.csv', index=False)
+    province_df.to_csv('/Users/lyam/同步空间/数据/仓_gps_营业部_polygon_/省份到上海距离_v2.csv', index=False)
+    # city_df.to_csv('F:\myStuff\数据\仓_gps_营业部_polygon_\城市到上海距离.csv', index=False)
 
-
+    exit(0)
 def filter_warehouse_site_():
     warehouse_df = pandas.read_csv(
         '/Users/lyam/同步空间/数据/仓_gps_营业部_polygon_/仓库地址坐标品类距离_v3.csv',
@@ -411,8 +411,8 @@ if __name__ == '__main__':
     # filter_warehouse_qty_('/Users/lyam/同步空间/数据/20220926_new/上海_1_8月_仓_出仓量_20220926212042.csv',
     #                       'first_sorting_tm_c', '出仓量')
     print('3')
-    # # cal_distance()
-    #
+    cal_distance()
+
     filter_warehouse_site_()
     df1 = pandas.read_csv(
         'csvs/ware-to-site_warehouse_unique_v2.csv',

@@ -29,6 +29,7 @@ def plotDotforDataframe(point):
                         radius=1, fillOpacity=0.5,
                         weight=4).add_to(map)
 
+
 def plotDot(lat, lng, color):
     folium.CircleMarker(location=[lat, lng],
                         radius=1, fill_color=color, fill_opacity=0.5, color=color,
@@ -51,7 +52,8 @@ def countLockDown(s):
 
 if __name__ == '__main__':
     warnings.simplefilter(action="ignore", category=SettingWithCopyWarning)
-    site_df = pandas.read_csv('/Users/lyam/Documents/mystuff/idea/数据/营业站/site_with_covid_info_v2.csv', engine='python',
+    site_df = pandas.read_csv('/Users/lyam/Documents/mystuff/idea/数据/营业站/site_with_covid_info_v2.csv',
+                              engine='python',
                               skip_blank_lines=True)
     # 4.15 - 5.17 疫情和营业部/仓对上
     # point in polygon
@@ -101,7 +103,8 @@ if __name__ == '__main__':
 
     site_df.apply(lambda x: plotDotforDataframe(x), axis=1)
     gradient = {.2: "blue", .4: "cyan", .6: "lime", .8: "yellow", 1: "red"}
-    hm = plugins.HeatMapWithTime(data_all, radius=25, position='topleft',gradient=gradient)
+    hm = plugins.HeatMapWithTime(data_all, radius=25, position='topleft', gradient=gradient, display_index=True,
+                                 index=list(site_df['route_dt'].unique()))
     hm.add_to(map)
 
     filename = str('covid_in_site_heatmap_revised_gps.html')
