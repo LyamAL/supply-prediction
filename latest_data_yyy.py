@@ -1,4 +1,5 @@
 import datetime
+import os
 import pickle
 import re
 
@@ -487,7 +488,31 @@ def draw():
         plt.show()
 
 
+def raw_data():
+    df = pandas.read_csv(
+        'csvs/temp_raw_route_data.csv',
+        engine='python',
+        skip_blank_lines=True)
+    df.apply(lambda x: countSorting(x), axis=1)
+    seq_data.to_csv('csvs/seq_of_nodes_v1.csv', index=False)
+    # def rename_store(x):
+    #     for idx, name in enumerate(old_names):
+    #         if name == x:
+    #             print(x, new_names[idx])
+    #             return new_names[idx]
+    #     return x
+
+    # df['start_node_name'] = df['start_node_name'].apply(lambda x: rename_store(x))
+    # df.drop(['reject_reason_name', 'start_node_id', 'end_node_name', 'end_area_name', 'route_type', 'plan_delv_tm'],
+    #         axis=1,
+    #         inplace=True)
+    # df.to_csv('csvs/temp_raw_route_data.csv', index=False)
+
+    exit(0)
+
+
 def analyse():
+    raw_data()
     dt_ls = ['plan_delv_dt', 'start_opt_tm', 'plan_delv_tm', 'real_delv_tm', 'route_start_node_real_arv_tm',
              'route_start_node_real_send_tm', 'start_sorting_real_insp_tm', 'start_sorting_real_send_tm',
              'start_sorting_real_ship_tm', 'end_sorting_real_arv_tm', 'end_sorting_real_ship_tm',
@@ -652,6 +677,72 @@ def plotLine(x):
     folium.CircleMarker(location=[x.lat_b, x.lng_b],
                         radius=1, fillOpacity=0.5, color='green',
                         weight=4).add_to(m)
+    pass
+
+
+seq_data = pandas.DataFrame(columns=['dt', 'no', 'name', 'in', 'out', 'type'])
+
+
+def seq_data_agg():
+    df = pandas.read_csv(
+        'csvs/seq_of_nodes_v1.csv',
+        engine='python', date_parser='dt',
+        skip_blank_lines=True)
+    df.groupby(['dt', 'name'])['Number'].sum()
+    pass
+
+
+# 获得序列特征
+def countSorting(row):
+    global seq_data
+    if type(row['recommended_routing']) != str:
+        return
+    ls = row['recommended_routing'].split('->')
+    seqth = ['second', 'third', 'fourth', 'fifth', 'sixth', 'seventh']
+    first_poor_boy = True
+    dt_in = None
+    dt_out = None
+    for idx, name in enumerate(ls):
+        node_name = name.split('_')[-1]
+        if idx == 0:
+            data_in = {'name': node_name, 'type': 0, 'dt': row['start_opt_tm'], 'in': 1}
+            data_out = {'name': node_name, 'type': 0, 'dt': row['route_start_node_real_send_tm'], 'out': 1}
+            seq_data = pandas.concat([seq_data, pandas.DataFrame.from_records([data_in])])
+            seq_data = pandas.concat([seq_data, pandas.DataFrame.from_records([data_out])])
+            continue
+        if '接货仓' in name:
+            sorting_idx = 1
+            continue
+        if idx == len(ls) - 1:  # 营业站
+            data_in = {'name': node_name, 'type': 2, 'dt': row['real_delv_tm'], 'out': 1, 'no': row['end_node_id']}
+            seq_data = pandas.concat([seq_data, pandas.DataFrame.from_records([data_in])])
+            continue
+        # 分拣中心们
+        sorting_code = name.split('_')[1]
+        data_in = {'no': sorting_code, 'name': node_name, 'type': 1}
+        data_out = {'no': sorting_code, 'name': node_name, 'type': 1}
+        if row['end_sorting_name'] == node_name:  # 如果末节点是该分拣中心
+            dt_in = row['end_sorting_real_arv_tm']
+            dt_out = row['end_sorting_real_send_tm']
+        elif first_poor_boy and row['first_sorting_real_arv_node'] == sorting_code or pandas.isna(
+                row['first_sorting_real_arv_node']):
+            if row['second_sorting_real_arv_node'] != sorting_code:
+                # 第一个没有出入货时间信息
+                first_poor_boy = False
+                dt_in = row['start_sorting_real_send_tm']
+                dt_out = row['second_sorting_real_arv_tm']
+        else:
+            for i in seqth:
+                if row[f'{i}_sorting_real_arv_node'] == sorting_code:
+                    dt_in = row[f'{i}_sorting_real_arv_tm']
+                    dt_out = row[f'{i}_sorting_real_send_tm']
+                    break
+        data_in['dt'] = dt_in
+        data_in['in'] = 1
+        data_out['dt'] = dt_out
+        data_out['out'] = 1
+        seq_data = pandas.concat([seq_data, pandas.DataFrame.from_records([data_in])])
+        seq_data = pandas.concat([seq_data, pandas.DataFrame.from_records([data_out])])
     pass
 
 
@@ -932,7 +1023,7 @@ if __name__ == '__main__':
     # TimingStackedAnalysis(None, '其他城市')
     # TimingStackedAnalysis(None, '其他城市')
     # route_distribution_draw()
-    # analyse()
+    analyse()
     # drawSided()
     path = DISK_PATH_MACHINE + '数据/全阶段/所有订单数据.csv'
     get_graph_dict(path)
