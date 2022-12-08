@@ -78,10 +78,10 @@ def get_graph_dict(path):
     df = filter_sites(df)
 
     date_list = pandas.date_range(start=df['start_opt_tm'].min(), end=df['start_opt_tm'].max()).to_pydatetime().tolist()
-    dates_interval = list(chunks(date_list, 14))
+    # dates_interval = list(chunks(date_list, 14))
     res_dict = dict()
-    res_list = list()
-    for idx, interval in enumerate(dates_interval):
+    res_list = dict()
+    for ind, interval in enumerate(date_list):
         df_ = df[(df['start_opt_tm'].isin(interval))]
         dfg_ = df_.groupby('start_node_name')
         for warehouse_nm, group in dfg_:
@@ -122,7 +122,11 @@ def get_graph_dict(path):
 
             res_dict[warehouse_nm] = warehouse_data
 
-        res_list.append(res_dict)
+        res_list[interval] = res_dict
         res_dict = dict()
     with open('heterogeneous_relation.pkl', 'wb') as f:
         pickle.dump(res_list, f)
+
+
+if __name__ == '__main__':
+    get_graph_dict('../../csvs/temp_raw_route_data.csv')
